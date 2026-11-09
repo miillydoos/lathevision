@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5c100c">
+  <title>LatheVision · Monitoramento do torno</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="topo">
+    <div class="logo">LATHE<span>VISION</span></div>
+    <div class="status" aria-live="polite">
+      <span id="ponto" class="ponto"></span>
+      <div>
+        <div>STATUS</div>
+        <div id="status-texto" class="status-texto">DESCONECTADO</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== TELA DE LOGIN ========== -->
+  <section id="tela-login" class="login-wrap">
+    <form id="form-login" class="login-card" autocomplete="off">
+      <div class="logo">LATHE<span>VISION</span></div>
+      <p class="tagline">SUA PRODUÇÃO, SEMPRE À VISTA</p>
+      <h2>Monitoramento Remoto</h2>
+
+      <label for="operador">Nome do operador</label>
+      <input id="operador" type="text" placeholder="Digite seu nome" required>
+
+      <label for="torno">Identificação do torno</label>
+      <input id="torno" type="text" placeholder="Ex.: Torno Mecânico 01" required>
+
+      <p id="erro-login" class="erro" role="alert"></p>
+      <button type="submit" class="botao-principal">INICIAR MONITORAMENTO</button>
+    </form>
+  </section>
+
+  <!-- ========== PAINEL ========== -->
+  <main id="tela-painel" class="painel hidden">
+    <h1>PAINEL DE MONITORAMENTO</h1>
+    <p class="subtitulo">Monitoramento em tempo real dos principais parâmetros do torno.</p>
+
+    <section class="card card-info">
+      <div>Operador: <strong id="info-operador">—</strong></div>
+      <div>Torno: <strong id="info-torno">—</strong></div>
+      <div>Sinal Wi-Fi: <strong id="info-rssi">—</strong></div>
+    </section>
+
+    <!-- Corrente -->
+    <article class="card">
+      <div class="card-cab">
+        <h2 class="card-titulo">⚡ Corrente elétrica</h2>
+        <div class="valor-bloco">
+          <span id="val-corrente" class="valor">--</span><span class="unidade">A</span>
+        </div>
+      </div>
+      <span id="badge-corrente" class="badge sem">SEM LEITURA</span>
+      <svg id="grafico-corrente" class="grafico" viewBox="0 0 300 140"
+           role="img" aria-label="Gráfico da corrente elétrica"></svg>
+    </article>
+
+    <!-- Nível de óleo -->
+    <article class="card">
+      <div class="card-cab">
+        <h2 class="card-titulo">🛢️ Nível de óleo</h2>
+        <div class="valor-bloco">
+          <span id="val-oleo" class="valor">--</span><span class="unidade">%</span>
+        </div>
+      </div>
+      <span id="badge-oleo" class="badge sem">SEM LEITURA</span>
+      <svg id="rosca-oleo" class="medidor" viewBox="0 0 300 300"
+           role="img" aria-label="Nível de óleo em porcentagem"></svg>
+    </article>
+
+    <!-- Velocidade -->
+    <article class="card">
+      <div class="card-cab">
+        <h2 class="card-titulo">⚙️ Velocidade</h2>
+        <div class="valor-bloco">
+          <span id="val-rpm" class="valor">--</span><span class="unidade">RPM</span>
+        </div>
+      </div>
+      <span id="badge-rpm" class="badge sem">SEM LEITURA</span>
+      <svg id="medidor-rpm" class="medidor" viewBox="0 0 300 250"
+           role="img" aria-label="Velocidade em rotações por minuto"></svg>
+    </article>
+
+    <!-- Vibração -->
+    <article class="card">
+      <div class="card-cab">
+        <h2 class="card-titulo">〰️ Vibração</h2>
+        <div class="valor-bloco">
+          <span id="val-vibracao" class="valor">--</span><span class="unidade">g</span>
+        </div>
+      </div>
+      <span id="badge-vibracao" class="badge sem">SEM LEITURA</span>
+      <svg id="grafico-vibracao" class="grafico" viewBox="0 0 300 140"
+           role="img" aria-label="Gráfico da vibração"></svg>
+    </article>
+
+    <!-- Menu inferior -->
+    <nav class="menu" aria-label="Navegação">
+      <button class="ativo" data-aba="painel"><span class="icone">⌂</span>PAINEL</button>
+      <button data-aba="historico"><span class="icone">↗</span>HISTÓRICO</button>
+      <button data-aba="alertas"><span class="icone">⚠️</span>ALERTAS</button>
+      <button data-aba="relatorios"><span class="icone">☰</span>RELATÓRIOS</button>
+      <button data-aba="equipamentos"><span class="icone">⚙️</span>EQUIPAMENTOS</button>
+      <button data-aba="configuracoes"><span class="icone">⚙️</span>CONFIGURAÇÕES</button>
+      <button data-aba="sair"><span class="icone">⇥</span>SAIR</button>
+    </nav>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Biblioteca MQTT (versão fixa) e lógica do painel -->
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@4.3.7/dist/mqtt.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

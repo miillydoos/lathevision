@@ -1,0 +1,14 @@
+# Credenciais locais: a senha do Wi-Fi NUNCA deve subir ao GitHub
+firmware/include/secrets.h
+
+# Arquivos gerados pelo PlatformIO (são recriados a cada compilação)
+firmware/.pio/
+firmware/.vscode/.browse.c_cpp.db*
+firmware/.vscode/c_cpp_properties.json
+firmware/.vscode/launch.json
+firmware/.vscode/ipch/
+
+# Sistema operacional e editor
+.DS_Store
+Thumbs.db
+*.swp
