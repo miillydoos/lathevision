@@ -148,4 +148,5 @@ As abas Histórico, Alertas, Relatórios, Equipamentos e Configurações ainda s
  #   l a t h e v i s i o n  
  #   l a t h e v i s i o n  
  #   l a t h e v i s i o n  
+ #   l a t h e v i s i o n  
  
