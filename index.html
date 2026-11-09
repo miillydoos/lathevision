@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>LATHEVISION · Monitoramento Remoto</title>
+
+  <!-- Biblioteca MQTT para navegador (conexão WebSocket) -->
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js"></script>
+
+  <style>
+    :root {
+      --vermelho: #e8141c;
+      --vermelho-vivo: #ff2a2a;
+      --muted: #d9a3a3;
+      --borda: #5a0000;
+      --ok: #3ddc6b;
+      --alerta: #f4c430;
+      --critico: #ff3b3b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #fff;
+      min-height: 100vh;
+      background: linear-gradient(180deg, #5c0000 0%, #1a0000 40%, #0c0000 100%);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ---------- LOGIN ---------- */
+    .login {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: min(92vw, 380px);
+      padding: 28px 24px 32px;
+      border: 1px solid var(--borda);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #3e0000 0%, #1c0000 100%);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+
+    .logo { font-size: 2.1rem; font-weight: 800; letter-spacing: 0.06em; }
+    .logo span, .logo-sm span { color: var(--vermelho-vivo); }
+
+    .tagline {
+      margin-top: 8px;
+      font-size: 0.68rem;
+      letter-spacing: 0.32em;
+      color: var(--muted);
+    }
+
+    .login-titulo { margin: 28px 0 18px; font-size: 1.25rem; }
+
+    .campo {
+      display: block;
+      text-align: left;
+      font-size: 0.95rem;
+      margin: 14px 0 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px; /* evita zoom automático no iPhone */
+      color: #fff;
+      background: #120000;
+      border: 1px solid var(--borda);
+      border-radius: 10px;
+      outline: none;
+    }
+
+    input:focus { border-color: var(--vermelho-vivo); }
+    input::placeholder { color: #8a6b6b; }
+
+    .btn-principal {
+      width: 100%;
+      margin-top: 24px;
+      padding: 16px;
+      border: 0;
+      border-radius: 10px;
+      font: 700 1rem "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+      letter-spacing: 0.02em;
+      background: linear-gradient(90deg, #a00000, #ff1f1f);
+      cursor: pointer;
+    }
+
+    .msg-erro {
+      min-height: 1.2em;
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: var(--critico);
+    }
+
+    /* ---------- TOPO ---------- */
+    .topo {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px;
+      background: linear-gradient(90deg, #4a0000, #240000);
+      border-bottom: 1px solid var(--borda);
+    }
+
+    .logo-sm { font-size: 1.35rem; font-weight: 800; letter-spacing: 0.05em; }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    .status small { display: block; }
+    .status b { font-size: 0.8rem; color: var(--st); }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: none;
+      background: var(--st);
+      box-shadow: 0 0 10px var(--st);
+    }
+
+    .st-ok { --st: var(--ok); }
+    .st-alerta { --st: var(--alerta); }
+    .st-critico { --st: var(--critico); }
+    .st-off { --st: #888; }
+
+    /* ---------- CONTEÚDO ---------- */
+    .conteudo {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 8px 16px 120px;
+    }
+
+    .titulo-pagina {
+      margin-top: 18px;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .subtitulo {
+      margin-top: 8px;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .info {
+      margin-top: 18px;
+      padding: 18px 22px;
+      border: 1px solid var(--borda);
+      border-radius: 14px;
+      background: linear-gradient(90deg, #3a0000, #140000);
+      font-size: 1.1rem;
+      line-height: 1.7;
+    }
+
+    .info small {
+      display: block;
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .card {
+      margin-top: 16px;
+      padding: 18px 20px 20px;
+      border: 1px solid var(--borda);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #4a0000 0%, #1f0000 100%);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .card-topo {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .card-titulo {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: #e6dada;
+    }
+
+    .valor {
+      font-size: 1.9rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .valor small {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-left: 3px;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .badge.normal { color: var(--ok); background: rgba(61, 220, 107, 0.12); }
+    .badge.alerta { color: var(--alerta); background: rgba(244, 196, 48, 0.14); }
+    .badge.critico { color: var(--critico); background: rgba(255, 59, 59, 0.16); }
+    .badge.sem { color: var(--muted); background: rgba(255, 255, 255, 0.06); }
+
+    .grafico {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin-top: 10px;
+    }
+
+    .medidor {
+      display: block;
+      width: 100%;
+      max-width: 280px;
+      height: auto;
+      margin: 6px auto 0;
+    }
+
+    .rosca {
+      display: block;
+      width: 100%;
+      max-width: 240px;
+      height: auto;
+      margin: 10px auto 0;
+    }
+
+    .svg-valor {
+      font: 800 34px "Helvetica Neue", Arial, sans-serif;
+      fill: #fff;
+    }
+
+    .svg-sub {
+      font: 600 12px "Helvetica Neue", Arial, sans-serif;
+      fill: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    /* ---------- ALERTAS / HISTÓRICO ---------- */
+    .lista-alertas { margin-top: 16px; display: grid; gap: 10px; }
+
+    .item-alerta {
+      padding: 14px 16px;
+      border-radius: 12px;
+      border-left: 4px solid var(--muted);
+      background: #2a0000;
+    }
+
+    .item-alerta.alerta { border-color: var(--alerta); }
+    .item-alerta.critico { border-color: var(--critico); }
+
+    .item-alerta small {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .vazio {
+      margin-top: 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .tabela-wrap {
+      margin-top: 16px;
+      padding: 0 12px;
+      overflow-x: auto;
+      border: 1px solid var(--borda);
+      border-radius: 14px;
+      background: #1c0000;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td {
+      padding: 10px 6px;
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid #3a0000;
+    }
+    th { color: var(--muted); font-weight: 600; }
+
+    /* ---------- MENU INFERIOR ---------- */
+    .nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10;
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+      background: #1a0000;
+      border-top: 1px solid var(--borda);
+    }
+
+    .nav-btn {
+      flex: 0 0 auto;
+      min-width: 66px;
+      padding: 8px 6px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      font: 700 0.58rem "Helvetica Neue", Arial, sans-serif;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+    }
+
+    .nav-btn .ico {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 1.2rem;
+    }
+
+    .nav-btn.ativo { color: #fff; background: #8a0000; }
+  </style>
+</head>
+<body>
+
+  <!-- ================= LOGIN ================= -->
+  <section id="login" class="login">
+    <div class="login-card">
+      <h1 class="logo">LATHE<span>VISION</span></h1>
+      <p class="tagline">SUA PRODUÇÃO, SEMPRE À VISTA</p>
+      <h2 class="login-titulo">Monitoramento Remoto</h2>
+
+      <label class="campo" for="operador">Nome do operador</label>
+      <input id="operador" type="text" placeholder="Digite seu nome" autocomplete="off" />
+
+      <label class="campo" for="torno">Identificação do torno</label>
+      <input id="torno" type="text" placeholder="Ex.: Torno Mecânico 01" autocomplete="off" />
+
+      <button id="btnIniciar" class="btn-principal" type="button">INICIAR MONITORAMENTO</button>
+      <p id="msgLogin" class="msg-erro"></p>
+    </div>
+  </section>
+
+  <!-- ================= APLICATIVO ================= -->
+  <div id="app" class="hidden">
+
+    <header class="topo">
+      <div class="logo-sm">LATHE<span>VISION</span></div>
+      <div id="status" class="status st-off">
+        <span class="dot"></span>
+        <div>
+          <small>STATUS</small>
+          <b id="statusTxt">CONECTANDO...</b>
+        </div>
+      </div>
+    </header>
+
+    <main class="conteudo">
+
+      <!-- PAINEL -->
+      <section id="view-painel">
+        <h1 class="titulo-pagina">PAINEL DE MONITORAMENTO</h1>
+        <p class="subtitulo">Monitoramento em tempo real dos principais parâmetros do torno.</p>
+
+        <div class="info">
+          <div>Operador: <b id="infoOperador">-</b></div>
+          <div>Torno: <b id="infoTorno">-</b></div>
+          <small>Tópico MQTT: <span id="infoTopico"></span></small>
+        </div>
+
+        <!-- Vibração -->
+        <article class="card">
+          <div class="card-topo">
+            <div class="card-titulo">〰️ VIBRAÇÃO</div>
+            <div class="valor"><span id="vibValor">--</span><small>g</small></div>
+          </div>
+          <span id="vibBadge" class="badge sem">SEM DADOS</span>
+          <svg id="vibGrafico" class="grafico" viewBox="0 0 320 150" role="img" aria-label="Gráfico de vibração"></svg>
+        </article>
+
+        <!-- Corrente -->
+        <article class="card">
+          <div class="card-topo">
+            <div class="card-titulo">⚡ CORRENTE ELÉTRICA</div>
+            <div class="valor"><span id="corrValor">--</span><small>A</small></div>
+          </div>
+          <span id="corrBadge" class="badge sem">SEM DADOS</span>
+          <svg id="corrGrafico" class="grafico" viewBox="0 0 320 150" role="img" aria-label="Gráfico de corrente"></svg>
+        </article>
+
+        <!-- Nível de óleo -->
+        <article class="card">
+          <div class="card-topo">
+            <div class="card-titulo">🛢️ NÍVEL DE ÓLEO</div>
+            <div class="valor"><span id="oleoValor">--</span><small>%</small></div>
+          </div>
+          <span id="oleoBadge" class="badge sem">SEM DADOS</span>
+          <svg id="oleoRosca" class="rosca" viewBox="0 0 220 220" role="img" aria-label="Nível de óleo"></svg>
+        </article>
+
+        <!-- Velocidade -->
+        <article class="card">
+          <div class="card-topo">
+            <div class="card-titulo">⚙️ VELOCIDADE</div>
+            <div class="valor"><span id="rpmValor">--</span><small>RPM</small></div>
+          </div>
+          <span id="rpmBadge" class="badge sem">SEM DADOS</span>
+          <svg id="rpmMedidor" class="medidor" viewBox="0 0 260 215" role="img" aria-label="Velocidade em RPM"></svg>
+        </article>
+      </section>
+
+      <!-- ALERTAS -->
+      <section id="view-alertas" class="hidden">
+        <h1 class="titulo-pagina">ALERTAS</h1>
+        <p class="subtitulo">Alertas gerados nesta sessão.</p>
+        <div id="listaAlertas" class="lista-alertas"></div>
+      </section>
+
+      <!-- HISTÓRICO -->
+      <section id="view-historico" class="hidden">
+        <h1 class="titulo-pagina">HISTÓRICO</h1>
+        <p class="subtitulo">Últimas leituras recebidas do torno.</p>
+        <div class="tabela-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Vibração (g)</th>
+                <th>Corrente (A)</th>
+                <th>RPM</th>
+                <th>Óleo (%)</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaHist"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- EM BREVE (Relatórios, Equipamentos, Configurações) -->
+      <section id="view-breve" class="hidden">
+        <h1 class="titulo-pagina" id="breveTitulo">EM BREVE</h1>
+        <p class="subtitulo">Esta seção ainda não foi implementada.</p>
+      </section>
+
+    </main>
+
+    <!-- MENU INFERIOR -->
+    <nav class="nav">
+      <button class="nav-btn ativo" data-view="painel"><span class="ico">⌂</span>PAINEL</button>
+      <button class="nav-btn" data-view="historico"><span class="ico">📈</span>HISTÓRICO</button>
+      <button class="nav-btn" data-view="alertas"><span class="ico">⚠️</span>ALERTAS</button>
+      <button class="nav-btn" data-view="breve" data-titulo="RELATÓRIOS"><span class="ico">📄</span>RELATÓRIOS</button>
+      <button class="nav-btn" data-view="breve" data-titulo="EQUIPAMENTOS"><span class="ico">🔩</span>EQUIPAMENTOS</button>
+      <button class="nav-btn" data-view="breve" data-titulo="CONFIGURAÇÕES"><span class="ico">🛠️</span>CONFIGURAÇÕES</button>
+      <button class="nav-btn" data-view="sair"><span class="ico">⇥</span>SAIR</button>
+    </nav>
+  </div>
+
+  <script>
+  /* =====================================================================
+     CONFIGURAÇÃO — ajuste aqui
+     ===================================================================== */
+  const CONFIG = {
+    MQTT_URL: 'wss://broker.hivemq.com:8884/mqtt', // WebSocket seguro (o GitHub Pages usa HTTPS)
+    MQTT_TOPICO: 'lathevision/torno01/dados',      // o ESP32 publica aqui (troque por um nome único)
+    PONTOS_GRAFICO: 30,                            // quantas leituras aparecem nos gráficos
+    TIMEOUT_SEM_SINAL_MS: 10000,                   // sem dados por mais que isso = SEM SINAL
+
+    // Limites: alerta e crítico. Valores maiores = pior, exceto onde inverso: true
+    VIBRACAO: { unidade: 'g', alerta: 0.7, critico: 1.2 },
+    CORRENTE: { unidade: 'A', alerta: 7.2, critico: 8.8 }, // 90% e 110% de 8 A (nominal do motor)
+    RPM:      { maximo: 2000, alerta: 1500, critico: 1800 },
+
+    // Distância do HC-SR04 até o óleo (cm): tanque cheio = distância pequena
+    OLEO: { cheioCm: 5, vazioCm: 25, alerta: 30, critico: 15, inverso: true }, // alerta/crítico em %
+  };
+
+  /* =====================================================================
+     ESTADO E UTILIDADES
+     ===================================================================== */
+  const $ = (id) => document.getElementById(id);
+
+  const ROTULO = { normal: '✓ NORMAL', alerta: '⚠ ALERTA', critico: '✖ CRÍTICO', sem: 'SEM DADOS' };
+  const NOME = { vibracao: 'Vibração', corrente: 'Corrente elétrica', rpm: 'Velocidade', oleo: 'Nível de óleo' };
+  const COR = { normal: '#3ddc6b', alerta: '#f4c430', critico: '#ff3b3b', vermelho: '#e8141c' };
+
+  const estado = {
+    client: null,
+    conectado: false,
+    ultimaLeitura: 0,
+    leitura: { vibracao: null, corrente: null, rpm: null, oleo: null },
+    series: { vibracao: [], corrente: [] },
+    registros: [],
+    alertas: [],
+    nivelAnterior: {},
+    timer: null,
+  };
+
+  function numero(x) {
+    const n = typeof x === 'number' ? x : parseFloat(x);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function fmt(v, casas = 0) {
+    return v === null ? '--' : v.toFixed(casas).replace('.', ',');
+  }
+
+  function hora() {
+    return new Date().toLocaleTimeString('pt-BR');
+  }
+
+  function empurra(arr, valor) {
+    arr.push(valor);
+    if (arr.length > CONFIG.PONTOS_GRAFICO) arr.shift();
+  }
+
+  function classificar(valor, lim) {
+    if (valor === null) return 'sem';
+    if (lim.inverso) return valor <= lim.critico ? 'critico' : valor <= lim.alerta ? 'alerta' : 'normal';
+    return valor >= lim.critico ? 'critico' : valor >= lim.alerta ? 'alerta' : 'normal';
+  }
+
+  function oleoPct(cm) {
+    const { cheioCm, vazioCm } = CONFIG.OLEO;
+    const pct = ((vazioCm - cm) / (vazioCm - cheioCm)) * 100;
+    return Math.round(Math.min(100, Math.max(0, pct)));
+  }
+
+  function niveis() {
+    const L = estado.leitura;
+    return {
+      vibracao: classificar(L.vibracao, CONFIG.VIBRACAO),
+      corrente: classificar(L.corrente, CONFIG.CORRENTE),
+      rpm: classificar(L.rpm, CONFIG.RPM),
+      oleo: classificar(L.oleo, CONFIG.OLEO),
+    };
+  }
+
+  function valorTexto(chave) {
+    const L = estado.leitura;
+    if (chave === 'vibracao') return `${fmt(L.vibracao, 2)} ${CONFIG.VIBRACAO.unidade}`;
+    if (chave === 'corrente') return `${fmt(L.corrente, 1)} ${CONFIG.CORRENTE.unidade}`;
+    if (chave === 'rpm') return `${fmt(L.rpm, 0)} RPM`;
+    return `${fmt(L.oleo, 0)}%`;
+  }
+
+  /* =====================================================================
+     RECEBIMENTO DOS DADOS (MQTT)
+     Formato esperado: {"vibracao":0.35,"corrente":7.4,"rpm":1400,"oleo_cm":12.3}
+     ===================================================================== */
+  function processarDados(d) {
+    const v = numero(d.vibracao);
+    const c = numero(d.corrente);
+    const r = numero(d.rpm);
+    const oc = numero(d.oleo_cm);
+
+    if (v !== null && v >= 0) { estado.leitura.vibracao = v; empurra(estado.series.vibracao, v); }
+    if (c !== null && c >= 0) { estado.leitura.corrente = c; empurra(estado.series.corrente, c); }
+    if (r !== null && r >= 0) estado.leitura.rpm = r;
+    if (oc !== null && oc > 0) estado.leitura.oleo = oleoPct(oc); // valor <= 0 = leitura inválida
+
+    estado.ultimaLeitura = Date.now();
+    estado.registros.push({ hora: hora(), ...estado.leitura });
+    if (estado.registros.length > 50) estado.registros.shift();
+
+    verificarAlertas();
+    renderizar();
+  }
+
+  function verificarAlertas() {
+    const atuais = niveis();
+    Object.keys(atuais).forEach((chave) => {
+      const nivel = atuais[chave];
+      if (nivel !== estado.nivelAnterior[chave] && (nivel === 'alerta' || nivel === 'critico')) {
+        const grau = nivel === 'critico' ? 'crítico' : 'alerta';
+        estado.alertas.unshift({
+          hora: hora(),
+          nivel,
+          texto: `${NOME[chave]}: ${valorTexto(chave)} (${grau})`,
+        });
+        if (estado.alertas.length > 100) estado.alertas.pop();
+      }
+    });
+    estado.nivelAnterior = atuais;
+  }
+
+  /* =====================================================================
+     RENDERIZAÇÃO
+     ===================================================================== */
+  function renderizar() {
+    const L = estado.leitura;
+    const N = niveis();
+
+    $('vibValor').textContent = fmt(L.vibracao, 2);
+    $('corrValor').textContent = fmt(L.corrente, 1);
+    $('rpmValor').textContent = fmt(L.rpm, 0);
+    $('oleoValor').textContent = fmt(L.oleo, 0);
+
+    definirBadge('vibBadge', N.vibracao);
+    definirBadge('corrBadge', N.corrente);
+    definirBadge('rpmBadge', N.rpm);
+    definirBadge('oleoBadge', N.oleo);
+
+    desenharLinha($('vibGrafico'), estado.series.vibracao);
+    desenharLinha($('corrGrafico'), estado.series.corrente);
+    desenharMedidor($('rpmMedidor'), L.rpm);
+    desenharRosca($('oleoRosca'), L.oleo, N.oleo);
+
+    atualizarStatus();
+  }
+
+  function definirBadge(id, nivel) {
+    const el = $(id);
+    el.className = 'badge ' + nivel;
+    el.textContent = ROTULO[nivel];
+  }
+
+  function desenharLinha(svg, valores) {
+    const W = 320, H = 150, P = 18, N = CONFIG.PONTOS_GRAFICO;
+
+    let grade = '';
+    for (let i = 0; i <= 4; i++) {
+      const y = P + (i * (H - 2 * P)) / 4;
+      grade += `<line x1="${P}" x2="${W - P}" y1="${y}" y2="${y}" stroke="#5a0000" stroke-width="1"/>`;
+    }
+
+    if (valores.length < 2) {
+      svg.innerHTML = grade;
+      return;
+    }
+
+    let min = Math.min(...valores);
+    let max = Math.max(...valores);
+    if (max - min < 1e-6) { min -= 0.5; max += 0.5; }
+    const folga = (max - min) * 0.15;
+    min -= folga;
+    max += folga;
+
+    const pontos = valores.map((v, i) => [
+      P + (i * (W - 2 * P)) / (N - 1),
+      H - P - ((v - min) / (max - min)) * (H - 2 * P),
+    ]);
+
+    const linha = pontos.map((p) => p.join(',')).join(' ');
+    const bolas = pontos
+      .map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.5" fill="${COR.vermelho}"/>`)
+      .join('');
+
+    svg.innerHTML = `${grade}
+      <polyline points="${linha}" fill="none" stroke="${COR.vermelho}" stroke-width="3"
+                stroke-linejoin="round" stroke-linecap="round"/>
+      ${bolas}`;
+  }
+
+  // Desenha um arco do medidor: f1 e f2 vão de 0 a 1 ao longo de 270° (de baixo-esquerda até baixo-direita)
+  function arco(cx, cy, r, f1, f2) {
+    const a1 = ((135 + 270 * f1) * Math.PI) / 180;
+    const a2 = ((135 + 270 * f2) * Math.PI) / 180;
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+    const grande = (f2 - f1) * 270 > 180 ? 1 : 0;
+    return `M${x1} ${y1} A${r} ${r} 0 ${grande} 1 ${x2} ${y2}`;
+  }
+
+  function desenharMedidor(svg, valor) {
+    const { maximo, alerta, critico } = CONFIG.RPM;
+    const cx = 130, cy = 120, r = 92;
+    const fA = alerta / maximo;
+    const fC = critico / maximo;
+    const f = valor === null ? 0 : Math.min(1, Math.max(0, valor / maximo));
+    const ang = ((135 + 270 * f) * Math.PI) / 180;
+    const px = cx + (r - 14) * Math.cos(ang);
+    const py = cy + (r - 14) * Math.sin(ang);
+
+    const ponteiro = valor === null
+      ? ''
+      : `<line x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="${COR.vermelho}" stroke-width="4" stroke-linecap="round"/>`;
+
+    svg.innerHTML = `
+      <path d="${arco(cx, cy, r, 0, fA)}" stroke="${COR.normal}" stroke-width="16" fill="none"/>
+      <path d="${arco(cx, cy, r, fA, fC)}" stroke="${COR.alerta}" stroke-width="16" fill="none"/>
+      <path d="${arco(cx, cy, r, fC, 1)}" stroke="${COR.vermelho}" stroke-width="16" fill="none"/>
+      ${ponteiro}
+      <circle cx="${cx}" cy="${cy}" r="9" fill="${COR.vermelho}"/>
+      <text x="${cx}" y="${cy + 46}" text-anchor="middle" class="svg-valor">${fmt(valor, 0)}</text>
+      <text x="${cx}" y="${cy + 66}" text-anchor="middle" class="svg-sub">RPM</text>`;
+  }
+
+  function desenharRosca(svg, pct, nivel) {
+    const r = 80, c = 110;
+    const C = 2 * Math.PI * r;
+    const f = pct === null ? 0 : pct / 100;
+    const cor = nivel === 'critico' ? COR.critico : nivel === 'alerta' ? COR.alerta : COR.vermelho;
+
+    svg.innerHTML = `
+      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#3a0000" stroke-width="22"/>
+      <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${cor}" stroke-width="22"
+              stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - f)}"
+              transform="rotate(-90 ${c} ${c})"/>
+      <circle cx="${c}" cy="${c}" r="68" fill="#140000"/>
+      <text x="${c}" y="${c + 8}" text-anchor="middle" class="svg-valor">${pct === null ? '--' : pct + '%'}</text>
+      <text x="${c}" y="${c + 30}" text-anchor="middle" class="svg-sub">NÍVEL DE ÓLEO</text>`;
+  }
+
+  function atualizarStatus() {
+    let st;
+    if (!estado.conectado) {
+      st = estado.ultimaLeitura ? 'off' : 'conectando';
+    } else if (!estado.ultimaLeitura || Date.now() - estado.ultimaLeitura > CONFIG.TIMEOUT_SEM_SINAL_MS) {
+      st = 'semsinal';
+    } else {
+      const vals = Object.values(niveis());
+      st = vals.includes('critico') ? 'critico' : vals.includes('alerta') ? 'alerta' : 'ok';
+    }
+
+    const TEXTO = {
+      ok: 'OPERACIONAL', alerta: 'ATENÇÃO', critico: 'CRÍTICO',
+      semsinal: 'SEM SINAL', off: 'DESCONECTADO', conectando: 'CONECTANDO...',
+    };
+    const CLASSE = {
+      ok: 'st-ok', alerta: 'st-alerta', critico: 'st-critico',
+      semsinal: 'st-alerta', off: 'st-off', conectando: 'st-off',
+    };
+
+    $('status').className = 'status ' + CLASSE[st];
+    $('statusTxt').textContent = TEXTO[st];
+  }
+
+  function renderAlertas() {
+    const box = $('listaAlertas');
+    if (!estado.alertas.length) {
+      box.innerHTML = '<p class="vazio">Nenhum alerta nesta sessão.</p>';
+      return;
+    }
+    box.innerHTML = estado.alertas
+      .map((a) => `<div class="item-alerta ${a.nivel}"><small>${a.hora}</small>${a.texto}</div>`)
+      .join('');
+  }
+
+  function renderHistorico() {
+    const linhas = [...estado.registros].reverse().map((r) => `
+      <tr>
+        <td>${r.hora}</td>
+        <td>${fmt(r.vibracao, 2)}</td>
+        <td>${fmt(r.corrente, 1)}</td>
+        <td>${fmt(r.rpm, 0)}</td>
+        <td>${fmt(r.oleo, 0)}</td>
+      </tr>`).join('');
+    $('tabelaHist').innerHTML = linhas || '<tr><td colspan="5">Aguardando leituras...</td></tr>';
+  }
+
+  /* =====================================================================
+     CONEXÃO MQTT
+     ===================================================================== */
+  function conectarMQTT() {
+    estado.client = mqtt.connect(CONFIG.MQTT_URL, {
+      clientId: 'lathevision-web-' + Math.random().toString(16).slice(2, 10),
+      reconnectPeriod: 3000,
+      connectTimeout: 10000,
+    });
+
+    estado.client.on('connect', () => {
+      estado.conectado = true;
+      estado.client.subscribe(CONFIG.MQTT_TOPICO, { qos: 0 });
+      atualizarStatus();
+    });
+
+    estado.client.on('close', () => {
+      estado.conectado = false;
+      atualizarStatus();
+    });
+
+    estado.client.on('error', (err) => console.error('MQTT:', err && err.message));
+
+    estado.client.on('message', (topico, payload) => {
+      try {
+        processarDados(JSON.parse(new TextDecoder().decode(payload)));
+      } catch (e) {
+        console.warn('Mensagem ignorada (JSON inválido):', e);
+      }
+    });
+  }
+
+  /* =====================================================================
+     NAVEGAÇÃO E EVENTOS
+     ===================================================================== */
+  function iniciar() {
+    const operador = $('operador').value.trim();
+    const torno = $('torno').value.trim();
+
+    if (!operador || !torno) {
+      $('msgLogin').textContent = 'Preencha o nome do operador e a identificação do torno.';
+      return;
+    }
+    if (typeof mqtt === 'undefined') {
+      $('msgLogin').textContent = 'Não foi possível carregar a biblioteca MQTT. Verifique sua internet.';
+      return;
+    }
+
+    $('infoOperador').textContent = operador;
+    $('infoTorno').textContent = torno;
+    $('infoTopico').textContent = CONFIG.MQTT_TOPICO;
+
+    $('login').classList.add('hidden');
+    $('app').classList.remove('hidden');
+
+    conectarMQTT();
+    renderizar();
+    estado.timer = setInterval(atualizarStatus, 1000);
+  }
+
+  function mostrarView(view, botao) {
+    ['painel', 'alertas', 'historico', 'breve'].forEach((id) => {
+      $('view-' + id).classList.toggle('hidden', id !== view);
+    });
+    document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('ativo', b === botao));
+
+    if (view === 'alertas') renderAlertas();
+    if (view === 'historico') renderHistorico();
+    if (view === 'breve') $('breveTitulo').textContent = botao.dataset.titulo;
+
+    window.scrollTo(0, 0);
+  }
+
+  function sair() {
+    if (estado.client) estado.client.end(true);
+    location.reload();
+  }
+
+  $('btnIniciar').addEventListener('click', iniciar);
+  $('torno').addEventListener('keydown', (e) => { if (e.key === 'Enter') iniciar(); });
+
+  document.querySelectorAll('.nav-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.view === 'sair') return sair();
+      mostrarView(btn.dataset.view, btn);
+    });
+  });
+  </script>
+</body>
+</html>
