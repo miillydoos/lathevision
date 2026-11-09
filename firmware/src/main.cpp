@@ -55,7 +55,7 @@ void setup() {
   conectaWifi();
 
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
-  mqtt.setBufferSize(512);   // o JSON tem cerca de 150 caracteres
+  mqtt.setBufferSize(512);   // o JSON tem cerca de 200 caracteres
   conectaMqtt();
 }
 
@@ -72,12 +72,13 @@ void loop() {
 
   Leituras l = lerSensores();
 
-  char json[256];
+  char json[320];
   snprintf(json, sizeof(json),
-           "{\"corrente_a\":%.2f,\"vibracao_g\":%.3f,\"rpm\":%.0f,"
-           "\"distancia_cm\":%.1f,\"oleo_pct\":%.1f,\"rssi\":%d,\"uptime_s\":%lu}",
-           l.correnteA, l.vibracaoG, l.rpm,
-           l.distanciaCm, l.oleoPct,
+           "{\"corrente_a\":%.2f,\"vibracao_g\":%.3f,\"rpm\":%.0f,\"sentido\":%d,"
+           "\"temperatura_c\":%.2f,\"distancia_cm\":%.1f,\"oleo_pct\":%.1f,"
+           "\"rssi\":%d,\"uptime_s\":%lu}",
+           l.correnteA, l.vibracaoG, l.rpm, l.sentido,
+           l.temperaturaC, l.distanciaCm, l.oleoPct,
            WiFi.RSSI(), millis() / 1000UL);
 
   if (mqtt.publish(TOPICO_TELEMETRIA, json)) {

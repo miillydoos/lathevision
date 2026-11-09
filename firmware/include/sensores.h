@@ -8,7 +8,9 @@
 struct Leituras {
   float correnteA;     // SCT-013: corrente em amperes (RMS)
   float vibracaoG;     // MPU6050: vibração total em g (RMS, sem a gravidade)
-  float rpm;           // encoder: rotações por minuto
+  float rpm;           // encoder: rotações por minuto (sensor de velocidade)
+  int   sentido;       // encoder: 1 = horário, -1 = anti-horário, 0 = parado
+  float temperaturaC;  // MAX6675 + termopar K: temperatura em °C
   float distanciaCm;   // HC-SR04: distância até a superfície do óleo, em cm
   float oleoPct;       // nível de óleo calculado, em %
 };

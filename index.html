@@ -580,6 +580,18 @@
         </div>
 
         <div class="grade-cards">
+        <!-- Temperatura (MAX6675 + termopar K) -->
+        <article class="card">
+          <div class="card-topo">
+            <div class="card-titulo">🌡️ TEMPERATURA</div>
+            <div class="valor"><span id="tempValor">--</span><small>°C</small></div>
+          </div>
+          <span id="tempBadge" class="badge sem">SEM DADOS</span>
+          <p id="tempLim" class="limites"></p>
+          <p id="tempTend" class="tendencia hidden"></p>
+          <svg id="tempGrafico" class="grafico" viewBox="0 0 640 230" role="img" aria-label="Gráfico de linha da temperatura"></svg>
+        </article>
+
         <!-- Vibração -->
         <article class="card">
           <div class="card-topo">
@@ -623,6 +635,7 @@
           </div>
           <span id="rpmBadge" class="badge sem">SEM DADOS</span>
           <p id="rpmLim" class="limites"></p>
+          <p class="tendencia">Sensor: <b>encoder</b> · Sentido de rotação: <b id="rpmSentido">--</b></p>
           <svg id="rpmMedidor" class="medidor" viewBox="0 0 260 215" role="img" aria-label="Velocidade em RPM"></svg>
         </article>
         </div>
@@ -655,6 +668,7 @@
             <thead>
               <tr>
                 <th>Hora</th>
+                <th>Temperatura (°C)</th>
                 <th>Vibração (G)</th>
                 <th>Corrente (A)</th>
                 <th>RPM</th>
@@ -732,6 +746,9 @@
 
     // Distância do HC-SR04 até o óleo (cm): tanque cheio = distância pequena
     OLEO: { cheioCm: 5, vazioCm: 25, alerta: 25, critico: 10, inverso: true }, // alerta/crítico em %
+
+    // Temperatura (MAX6675 + termopar K). Valores sugeridos: ajuste ao ponto medido no torno.
+    TEMPERATURA: { unidade: '°C', alerta: 60, critico: 80 },
   };
 
   CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[220];
@@ -747,15 +764,16 @@
   const $ = (id) => document.getElementById(id);
 
   const ROTULO = { normal: '✓ NORMAL', alerta: '⚠ ALERTA', critico: '✖ CRÍTICO', sem: 'SEM DADOS' };
-  const NOME = { vibracao: 'Vibração', corrente: 'Corrente elétrica', rpm: 'Velocidade', oleo: 'Nível de óleo' };
+  const NOME = { temperatura: 'Temperatura', vibracao: 'Vibração', corrente: 'Corrente elétrica', rpm: 'Velocidade', oleo: 'Nível de óleo' };
   const COR = { normal: '#3ddc6b', alerta: '#f4c430', critico: '#ff3b3b', vermelho: '#e8141c' };
 
   const estado = {
     client: null,
     conectado: false,
     ultimaLeitura: 0,
-    leitura: { vibracao: null, corrente: null, rpm: null, oleo: null },
-    series: { vibracao: [], corrente: [] },
+    leitura: { temperatura: null, vibracao: null, corrente: null, rpm: null, oleo: null },
+    sentido: null,
+    series: { temperatura: [], vibracao: [], corrente: [] },
     registros: [],
     alertas: [],
     nivelAnterior: {},
@@ -799,6 +817,7 @@
       vibracao: classificar(L.vibracao, CONFIG.VIBRACAO),
       corrente: classificar(L.corrente, CONFIG.CORRENTE),
       rpm: classificar(L.rpm, CONFIG.RPM),
+      temperatura: classificar(L.temperatura, CONFIG.TEMPERATURA),
       oleo: classificar(L.oleo, CONFIG.OLEO),
     };
   }
@@ -808,24 +827,31 @@
     if (chave === 'vibracao') return `${fmt(L.vibracao, 2)} ${CONFIG.VIBRACAO.unidade}`;
     if (chave === 'corrente') return `${fmt(L.corrente, 1)} ${CONFIG.CORRENTE.unidade}`;
     if (chave === 'rpm') return `${fmt(L.rpm, 0)} RPM`;
+    if (chave === 'temperatura') return `${fmt(L.temperatura, 1)} °C`;
     return `${fmt(L.oleo, 0)}%`;
   }
 
   /* =====================================================================
      RECEBIMENTO DOS DADOS (MQTT)
-     Formato do firmware: {"corrente_a":7.4,"vibracao_g":0.35,"rpm":1400,"distancia_cm":12.3,"oleo_pct":64}
+     Formato do firmware: {"corrente_a":7.4,"vibracao_g":0.35,"rpm":1400,"sentido":1,
+                           "temperatura_c":42.5,"distancia_cm":12.3,"oleo_pct":64}
+     Valor -1 = sensor sem leitura (é ignorado)
      (também aceita o formato antigo: vibracao, corrente, oleo_cm)
      ===================================================================== */
   function processarDados(d) {
     const v = numero(d.vibracao_g ?? d.vibracao);
     const c = numero(d.corrente_a ?? d.corrente);
     const r = numero(d.rpm);
+    const t = numero(d.temperatura_c ?? d.temperatura);
+    const sent = numero(d.sentido);
     const op = numero(d.oleo_pct);
     const oc = numero(d.distancia_cm ?? d.oleo_cm);
 
     if (v !== null && v >= 0) { estado.leitura.vibracao = v; empurra(estado.series.vibracao, v); }
     if (c !== null && c >= 0) { estado.leitura.corrente = c; empurra(estado.series.corrente, c); }
     if (r !== null && r >= 0) estado.leitura.rpm = r;
+    if (sent !== null) estado.sentido = sent;
+    if (t !== null && t >= 0) { estado.leitura.temperatura = t; empurra(estado.series.temperatura, t); }
     if (op !== null && op >= 0) estado.leitura.oleo = Math.round(Math.min(100, op));
     else if (oc !== null && oc > 0) estado.leitura.oleo = oleoPct(oc); // valor <= 0 = leitura inválida
 
@@ -834,7 +860,12 @@
     if (estado.registros.length > 50) estado.registros.shift();
 
     verificarAlertas();
-    if (estado.opcoes.auto) renderizar();
+    if (estado.opcoes.auto) {
+      renderizar();
+      // Atualiza em tempo real a aba que estiver aberta
+      if (!$('view-historico').classList.contains('hidden')) renderHistorico();
+      if (!$('view-alertas').classList.contains('hidden')) renderAlertas();
+    }
   }
 
   function verificarAlertas() {
@@ -862,11 +893,13 @@
     const L = estado.leitura;
     const N = niveis();
 
+    $('tempValor').textContent = fmt(L.temperatura, 1);
     $('vibValor').textContent = fmt(L.vibracao, 2);
     $('corrValor').textContent = fmt(L.corrente, 1);
     $('rpmValor').textContent = fmt(L.rpm, 0);
     $('oleoValor').textContent = fmt(L.oleo, 0);
 
+    definirBadge('tempBadge', N.temperatura);
     definirBadge('vibBadge', N.vibracao);
     definirBadge('corrBadge', N.corrente);
     definirBadge('rpmBadge', N.rpm);
@@ -874,7 +907,10 @@
 
     desenharBarras($('vibGrafico'), estado.series.vibracao);
     desenharLinha($('corrGrafico'), estado.series.corrente);
+    desenharLinha($('tempGrafico'), estado.series.temperatura);
     renderTendencias();
+    const SENTIDO = { 1: 'horário', '-1': 'anti-horário', 0: 'parado' };
+    $('rpmSentido').textContent = estado.sentido === null ? '--' : (SENTIDO[estado.sentido] || '--');
     desenharMedidor($('rpmMedidor'), L.rpm);
     desenharRosca($('oleoRosca'), L.oleo, N.oleo);
 
@@ -888,7 +924,8 @@
   }
 
   function renderLimites() {
-    const V = CONFIG.VIBRACAO, C = CONFIG.CORRENTE, O = CONFIG.OLEO;
+    const V = CONFIG.VIBRACAO, C = CONFIG.CORRENTE, O = CONFIG.OLEO, T = CONFIG.TEMPERATURA;
+    linhaLimite('tempLim', `> ${T.alerta} °C`, `> ${T.critico} °C`);
     linhaLimite('vibLim', `> ${fmt(V.alerta, 1)} ${V.unidade}`, `> ${fmt(V.critico, 1)} ${V.unidade}`);
     linhaLimite('corrLim', `> ${fmt(C.alerta, 1)} A`, `> ${fmt(C.critico, 1)} A`);
     linhaLimite('oleoLim', `< ${O.alerta}%`, `< ${O.critico}%`);
@@ -1036,7 +1073,7 @@
   }
 
   function renderTendencias() {
-    [['vibTend', estado.series.vibracao, CONFIG.VIBRACAO], ['corrTend', estado.series.corrente, CONFIG.CORRENTE]]
+    [['tempTend', estado.series.temperatura, CONFIG.TEMPERATURA], ['vibTend', estado.series.vibracao, CONFIG.VIBRACAO], ['corrTend', estado.series.corrente, CONFIG.CORRENTE]]
       .forEach(([id, serie, lim]) => {
         const texto = estado.opcoes.preditiva ? tendencia(serie, lim) : null;
         $(id).classList.toggle('hidden', !texto);
@@ -1115,6 +1152,7 @@
         inativa: tensao !== tensaoAtiva,
       })),
       { sensor: 'Nível de óleo', alerta: `< ${O.alerta}%`, critico: `< ${O.critico}%` },
+      { sensor: 'Temperatura', alerta: `> ${CONFIG.TEMPERATURA.alerta} °C`, critico: `> ${CONFIG.TEMPERATURA.critico} °C` },
       { sensor: 'Vibração', alerta: `> ${fmt(V.alerta, 1)} ${V.unidade}`, critico: `> ${fmt(V.critico, 1)} ${V.unidade}` },
       {
         sensor: 'Velocidade',
@@ -1144,12 +1182,13 @@
     const linhas = [...estado.registros].reverse().map((r) => `
       <tr>
         <td>${r.hora}</td>
+        <td>${fmt(r.temperatura, 1)}</td>
         <td>${fmt(r.vibracao, 2)}</td>
         <td>${fmt(r.corrente, 1)}</td>
         <td>${fmt(r.rpm, 0)}</td>
         <td>${fmt(r.oleo, 0)}</td>
       </tr>`).join('');
-    $('tabelaHist').innerHTML = linhas || '<tr><td colspan="5">Aguardando leituras...</td></tr>';
+    $('tabelaHist').innerHTML = linhas || '<tr><td colspan="6">Aguardando leituras...</td></tr>';
   }
 
   /* =====================================================================

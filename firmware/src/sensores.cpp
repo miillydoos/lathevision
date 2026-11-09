@@ -9,31 +9,62 @@
 #include "sensores.h"
 
 // ==========================================================
-// ENCODER (velocidade)
-// A interrupção só soma os pulsos. O cálculo do RPM é feito
+// ENCODER (sensor de velocidade)
+// A cada borda de subida do CANAL A, o CANAL B diz o sentido:
+// B em nível baixo = um sentido, B em nível alto = o outro.
+// A interrupção só soma (ou subtrai) os pulsos; o RPM é calculado
 // na leitura, usando o tempo decorrido entre uma leitura e outra.
 // ==========================================================
-static volatile unsigned long pulsosEncoder = 0;
+static volatile long pulsosEncoder = 0;
 static unsigned long ultimaLeituraRpmMs = 0;
 
 static void IRAM_ATTR isrEncoder() {
-  pulsosEncoder++;
+  if (digitalRead(PIN_ENCODER_B)) pulsosEncoder--;
+  else pulsosEncoder++;
 }
 
-static float lerRpm() {
+static float lerRpm(int &sentido) {
   // Lê e zera o contador sem que a interrupção atrapalhe
   noInterrupts();
-  unsigned long pulsos = pulsosEncoder;
+  long pulsos = pulsosEncoder;
   pulsosEncoder = 0;
   interrupts();
+
+  sentido = pulsos > 0 ? 1 : (pulsos < 0 ? -1 : 0);
 
   unsigned long agora = millis();
   float intervaloS = (agora - ultimaLeituraRpmMs) / 1000.0f;
   ultimaLeituraRpmMs = agora;
   if (intervaloS <= 0.0f) return 0.0f;
 
-  float voltas = (float)pulsos / ENCODER_PULSOS_POR_VOLTA;
+  float voltas = fabsf((float)pulsos) / ENCODER_PULSOS_POR_VOLTA;
   return voltas * 60.0f / intervaloS;   // voltas por minuto
+}
+
+// ==========================================================
+// MAX6675 + termopar K (temperatura)
+// SPI feito "na mão" nos pinos da placa (SO, CS, SCK).
+// O chip devolve 16 bits: bits 14..3 = temperatura em passos de 0,25 °C,
+// bit 2 = termopar desconectado. Precisa de ~220 ms entre conversões.
+// ==========================================================
+static float lerTemperaturaC() {
+  digitalWrite(PIN_MAX_CS, LOW);       // para a conversão e libera a leitura
+  delayMicroseconds(10);
+
+  uint16_t valor = 0;
+  for (int i = 15; i >= 0; i--) {
+    digitalWrite(PIN_MAX_SCK, HIGH);
+    delayMicroseconds(10);
+    if (digitalRead(PIN_MAX_SO)) valor |= (1 << i);
+    digitalWrite(PIN_MAX_SCK, LOW);
+    delayMicroseconds(10);
+  }
+
+  digitalWrite(PIN_MAX_CS, HIGH);      // inicia a próxima conversão
+
+  if (valor & 0x0004) return -1.0f;    // termopar aberto/desconectado
+  if (valor == 0xFFFF) return -1.0f;   // chip não respondeu (SO sempre alto)
+  return (valor >> 3) * 0.25f;
 }
 
 // ==========================================================
@@ -186,10 +217,18 @@ void setupSensores() {
   pinMode(PIN_HC_TRIG, OUTPUT);
   pinMode(PIN_HC_ECHO, INPUT);
 
-  // Encoder: conta a borda de subida do pulso
-  pinMode(PIN_ENCODER, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER), isrEncoder, RISING);
+  // Encoder: conta a borda de subida do CANAL A e lê o CANAL B para o sentido
+  pinMode(PIN_ENCODER_A, INPUT_PULLUP);
+  pinMode(PIN_ENCODER_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_A), isrEncoder, RISING);
   ultimaLeituraRpmMs = millis();
+
+  // MAX6675: CS em nível alto deixa o chip convertendo
+  pinMode(PIN_MAX_CS, OUTPUT);
+  pinMode(PIN_MAX_SCK, OUTPUT);
+  pinMode(PIN_MAX_SO, INPUT);
+  digitalWrite(PIN_MAX_CS, HIGH);
+  digitalWrite(PIN_MAX_SCK, LOW);
 
   // MPU6050: I2C a 400 kHz, acorda o sensor e configura ±2 g
   Wire.begin(PIN_MPU_SDA, PIN_MPU_SCL);
@@ -206,6 +245,7 @@ Leituras lerSensores() {
   l.vibracaoG = lerVibracaoG();
   l.distanciaCm = lerDistanciaCm();
   l.oleoPct = calculaNivelOleo(l.distanciaCm);
-  l.rpm = lerRpm();
+  l.temperaturaC = lerTemperaturaC();
+  l.rpm = lerRpm(l.sentido);
   return l;
 }
