@@ -144,14 +144,44 @@
 
     /* ---------- CONTEÚDO ---------- */
     .conteudo {
-      max-width: 520px;
+      width: 100%;
+      max-width: 1280px;
       margin: 0 auto;
       padding: 8px 16px 120px;
     }
 
+    /* Grade dos gráficos: 1 coluna no celular, 2 no tablet, 4 no desktop */
+    .grade-cards {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .grade-cards .card {
+      margin-top: 0;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .grade-cards .card > svg { margin-top: auto; padding-top: 10px; }
+
+    @media (min-width: 640px) {
+      .grade-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (min-width: 1100px) {
+      .grade-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    /* Texto mais legível em telas largas */
+    .conteudo > section > .subtitulo,
+    .lista-alertas { max-width: 900px; }
+
     .titulo-pagina {
       margin-top: 18px;
-      font-size: 1.45rem;
+      font-size: clamp(1.25rem, 1rem + 1.2vw, 1.8rem);
       font-weight: 800;
       letter-spacing: 0.01em;
     }
@@ -192,6 +222,7 @@
 
     .card-topo {
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
@@ -205,7 +236,7 @@
     }
 
     .valor {
-      font-size: 1.9rem;
+      font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
       font-weight: 800;
       white-space: nowrap;
     }
@@ -230,6 +261,32 @@
     .badge.alerta { color: var(--alerta); background: rgba(244, 196, 48, 0.14); }
     .badge.critico { color: var(--critico); background: rgba(255, 59, 59, 0.16); }
     .badge.sem { color: var(--muted); background: rgba(255, 255, 255, 0.06); }
+
+    .limites {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      margin-top: 10px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .limites b { font-weight: 700; }
+    .limites .lim-alerta b { color: var(--alerta); }
+    .limites .lim-critico b { color: var(--critico); }
+
+    select {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      color: #fff;
+      background: #120000;
+      border: 1px solid var(--borda);
+      border-radius: 10px;
+      outline: none;
+    }
+
+    select:focus { border-color: var(--vermelho-vivo); }
 
     .grafico {
       display: block;
@@ -300,6 +357,27 @@
       background: #1c0000;
     }
 
+    .subtitulo-secao {
+      margin-top: 26px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+    }
+
+    .tabela-limites { max-width: 900px; }
+    .tabela-limites td:nth-child(2) { color: var(--alerta); font-weight: 700; }
+    .tabela-limites td:nth-child(3) { color: var(--critico); font-weight: 700; }
+    .tabela-limites tr.inativa td { opacity: 0.45; }
+    .tabela-limites tr:last-child td { border-bottom: 0; }
+    .tag-ativa {
+      margin-left: 6px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      color: #fff;
+      background: #8a0000;
+    }
+
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th, td {
       padding: 10px 6px;
@@ -344,6 +422,19 @@
     }
 
     .nav-btn.ativo { color: #fff; background: #8a0000; }
+
+    /* Menu centralizado e mais confortável em telas maiores */
+    @media (min-width: 760px) {
+      .nav { justify-content: center; gap: 8px; }
+      .nav-btn { min-width: 96px; font-size: 0.68rem; padding: 10px 10px; }
+    }
+
+    @media (max-width: 380px) {
+      .topo { padding-left: 14px; padding-right: 14px; }
+      .logo-sm { font-size: 1.1rem; }
+      .card { padding: 16px 14px 18px; }
+      .info { padding: 14px 16px; font-size: 1rem; }
+    }
   </style>
 </head>
 <body>
@@ -360,6 +451,12 @@
 
       <label class="campo" for="torno">Identificação do torno</label>
       <input id="torno" type="text" placeholder="Ex.: Torno Mecânico 01" autocomplete="off" />
+
+      <label class="campo" for="tensao">Tensão de alimentação</label>
+      <select id="tensao">
+        <option value="220">220 V</option>
+        <option value="380">380 V</option>
+      </select>
 
       <button id="btnIniciar" class="btn-principal" type="button">INICIAR MONITORAMENTO</button>
       <p id="msgLogin" class="msg-erro"></p>
@@ -390,16 +487,19 @@
         <div class="info">
           <div>Operador: <b id="infoOperador">-</b></div>
           <div>Torno: <b id="infoTorno">-</b></div>
+          <div>Tensão: <b id="infoTensao">-</b></div>
           <small>Tópico MQTT: <span id="infoTopico"></span></small>
         </div>
 
+        <div class="grade-cards">
         <!-- Vibração -->
         <article class="card">
           <div class="card-topo">
             <div class="card-titulo">〰️ VIBRAÇÃO</div>
-            <div class="valor"><span id="vibValor">--</span><small>g</small></div>
+            <div class="valor"><span id="vibValor">--</span><small>G</small></div>
           </div>
           <span id="vibBadge" class="badge sem">SEM DADOS</span>
+          <p id="vibLim" class="limites"></p>
           <svg id="vibGrafico" class="grafico" viewBox="0 0 320 150" role="img" aria-label="Gráfico de vibração"></svg>
         </article>
 
@@ -410,6 +510,7 @@
             <div class="valor"><span id="corrValor">--</span><small>A</small></div>
           </div>
           <span id="corrBadge" class="badge sem">SEM DADOS</span>
+          <p id="corrLim" class="limites"></p>
           <svg id="corrGrafico" class="grafico" viewBox="0 0 320 150" role="img" aria-label="Gráfico de corrente"></svg>
         </article>
 
@@ -420,6 +521,7 @@
             <div class="valor"><span id="oleoValor">--</span><small>%</small></div>
           </div>
           <span id="oleoBadge" class="badge sem">SEM DADOS</span>
+          <p id="oleoLim" class="limites"></p>
           <svg id="oleoRosca" class="rosca" viewBox="0 0 220 220" role="img" aria-label="Nível de óleo"></svg>
         </article>
 
@@ -430,14 +532,27 @@
             <div class="valor"><span id="rpmValor">--</span><small>RPM</small></div>
           </div>
           <span id="rpmBadge" class="badge sem">SEM DADOS</span>
+          <p id="rpmLim" class="limites"></p>
           <svg id="rpmMedidor" class="medidor" viewBox="0 0 260 215" role="img" aria-label="Velocidade em RPM"></svg>
         </article>
+        </div>
       </section>
 
       <!-- ALERTAS -->
       <section id="view-alertas" class="hidden">
         <h1 class="titulo-pagina">ALERTAS</h1>
-        <p class="subtitulo">Alertas gerados nesta sessão.</p>
+        <p class="subtitulo">Limites usados para gerar os alertas de cada sensor.</p>
+
+        <div class="tabela-wrap tabela-limites">
+          <table>
+            <thead>
+              <tr><th>Sensor</th><th>Alerta</th><th>Crítico</th></tr>
+            </thead>
+            <tbody id="tabelaLimites"></tbody>
+          </table>
+        </div>
+
+        <h2 class="subtitulo-secao">Alertas desta sessão</h2>
         <div id="listaAlertas" class="lista-alertas"></div>
       </section>
 
@@ -450,7 +565,7 @@
             <thead>
               <tr>
                 <th>Hora</th>
-                <th>Vibração (g)</th>
+                <th>Vibração (G)</th>
                 <th>Corrente (A)</th>
                 <th>RPM</th>
                 <th>Óleo (%)</th>
@@ -461,7 +576,7 @@
         </div>
       </section>
 
-      <!-- EM BREVE (Relatórios, Equipamentos, Configurações) -->
+      <!-- EM BREVE (Configurações) -->
       <section id="view-breve" class="hidden">
         <h1 class="titulo-pagina" id="breveTitulo">EM BREVE</h1>
         <p class="subtitulo">Esta seção ainda não foi implementada.</p>
@@ -474,8 +589,6 @@
       <button class="nav-btn ativo" data-view="painel"><span class="ico">⌂</span>PAINEL</button>
       <button class="nav-btn" data-view="historico"><span class="ico">📈</span>HISTÓRICO</button>
       <button class="nav-btn" data-view="alertas"><span class="ico">⚠️</span>ALERTAS</button>
-      <button class="nav-btn" data-view="breve" data-titulo="RELATÓRIOS"><span class="ico">📄</span>RELATÓRIOS</button>
-      <button class="nav-btn" data-view="breve" data-titulo="EQUIPAMENTOS"><span class="ico">🔩</span>EQUIPAMENTOS</button>
       <button class="nav-btn" data-view="breve" data-titulo="CONFIGURAÇÕES"><span class="ico">🛠️</span>CONFIGURAÇÕES</button>
       <button class="nav-btn" data-view="sair"><span class="ico">⇥</span>SAIR</button>
     </nav>
@@ -487,17 +600,31 @@
      ===================================================================== */
   const CONFIG = {
     MQTT_URL: 'wss://broker.hivemq.com:8884/mqtt', // WebSocket seguro (o GitHub Pages usa HTTPS)
-    MQTT_TOPICO: 'lathevision/torno01/dados',      // o ESP32 publica aqui (troque por um nome único)
+    MQTT_TOPICO: 'torno/torno-romi-01/telemetria', // mesmo tópico do firmware: torno/<TORNO_ID>/telemetria
     PONTOS_GRAFICO: 30,                            // quantas leituras aparecem nos gráficos
     TIMEOUT_SEM_SINAL_MS: 10000,                   // sem dados por mais que isso = SEM SINAL
 
-    // Limites: alerta e crítico. Valores maiores = pior, exceto onde inverso: true
-    VIBRACAO: { unidade: 'g', alerta: 0.7, critico: 1.2 },
-    CORRENTE: { unidade: 'A', alerta: 7.2, critico: 8.8 }, // 90% e 110% de 8 A (nominal do motor)
-    RPM:      { maximo: 2000, alerta: 1500, critico: 1800 },
+    // Limites: alerta e crítico. Acima do limite = pior, exceto onde inverso: true (abaixo = pior)
+    VIBRACAO: { unidade: 'G', alerta: 0.7, critico: 1.2 },
+
+    // Corrente depende da tensão escolhida no login
+    CORRENTE_POR_TENSAO: {
+      220: { unidade: 'A', alerta: 7.2, critico: 8.8 },
+      380: { unidade: 'A', alerta: 4.5, critico: 5.5 },
+    },
+
+    // Velocidade: alerta acima da rotação máx. do spindle, crítico 10% acima dela
+    RPM_MAX_SPINDLE: 2000,
 
     // Distância do HC-SR04 até o óleo (cm): tanque cheio = distância pequena
-    OLEO: { cheioCm: 5, vazioCm: 25, alerta: 30, critico: 15, inverso: true }, // alerta/crítico em %
+    OLEO: { cheioCm: 5, vazioCm: 25, alerta: 25, critico: 10, inverso: true }, // alerta/crítico em %
+  };
+
+  CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[220];
+  CONFIG.RPM = {
+    alerta: CONFIG.RPM_MAX_SPINDLE,
+    critico: CONFIG.RPM_MAX_SPINDLE * 1.1,
+    maximo: CONFIG.RPM_MAX_SPINDLE * 1.2, // fundo de escala do medidor
   };
 
   /* =====================================================================
@@ -541,8 +668,8 @@
 
   function classificar(valor, lim) {
     if (valor === null) return 'sem';
-    if (lim.inverso) return valor <= lim.critico ? 'critico' : valor <= lim.alerta ? 'alerta' : 'normal';
-    return valor >= lim.critico ? 'critico' : valor >= lim.alerta ? 'alerta' : 'normal';
+    if (lim.inverso) return valor < lim.critico ? 'critico' : valor < lim.alerta ? 'alerta' : 'normal';
+    return valor > lim.critico ? 'critico' : valor > lim.alerta ? 'alerta' : 'normal';
   }
 
   function oleoPct(cm) {
@@ -571,18 +698,21 @@
 
   /* =====================================================================
      RECEBIMENTO DOS DADOS (MQTT)
-     Formato esperado: {"vibracao":0.35,"corrente":7.4,"rpm":1400,"oleo_cm":12.3}
+     Formato do firmware: {"corrente_a":7.4,"vibracao_g":0.35,"rpm":1400,"distancia_cm":12.3,"oleo_pct":64}
+     (também aceita o formato antigo: vibracao, corrente, oleo_cm)
      ===================================================================== */
   function processarDados(d) {
-    const v = numero(d.vibracao);
-    const c = numero(d.corrente);
+    const v = numero(d.vibracao_g ?? d.vibracao);
+    const c = numero(d.corrente_a ?? d.corrente);
     const r = numero(d.rpm);
-    const oc = numero(d.oleo_cm);
+    const op = numero(d.oleo_pct);
+    const oc = numero(d.distancia_cm ?? d.oleo_cm);
 
     if (v !== null && v >= 0) { estado.leitura.vibracao = v; empurra(estado.series.vibracao, v); }
     if (c !== null && c >= 0) { estado.leitura.corrente = c; empurra(estado.series.corrente, c); }
     if (r !== null && r >= 0) estado.leitura.rpm = r;
-    if (oc !== null && oc > 0) estado.leitura.oleo = oleoPct(oc); // valor <= 0 = leitura inválida
+    if (op !== null && op >= 0) estado.leitura.oleo = Math.round(Math.min(100, op));
+    else if (oc !== null && oc > 0) estado.leitura.oleo = oleoPct(oc); // valor <= 0 = leitura inválida
 
     estado.ultimaLeitura = Date.now();
     estado.registros.push({ hora: hora(), ...estado.leitura });
@@ -632,6 +762,22 @@
     desenharRosca($('oleoRosca'), L.oleo, N.oleo);
 
     atualizarStatus();
+  }
+
+  function linhaLimite(id, alerta, critico) {
+    $(id).innerHTML =
+      `<span class="lim-alerta">Alerta: <b>${alerta}</b></span>` +
+      `<span class="lim-critico">Crítico: <b>${critico}</b></span>`;
+  }
+
+  function renderLimites() {
+    const V = CONFIG.VIBRACAO, C = CONFIG.CORRENTE, O = CONFIG.OLEO;
+    linhaLimite('vibLim', `> ${fmt(V.alerta, 1)} ${V.unidade}`, `> ${fmt(V.critico, 1)} ${V.unidade}`);
+    linhaLimite('corrLim', `> ${fmt(C.alerta, 1)} A`, `> ${fmt(C.critico, 1)} A`);
+    linhaLimite('oleoLim', `< ${O.alerta}%`, `< ${O.critico}%`);
+    linhaLimite('rpmLim',
+      `> ${fmt(CONFIG.RPM.alerta, 0)} RPM (máx. spindle)`,
+      `> ${fmt(CONFIG.RPM.critico, 0)} RPM (+10%)`);
   }
 
   function definirBadge(id, nivel) {
@@ -751,7 +897,32 @@
     $('statusTxt').textContent = TEXTO[st];
   }
 
+  function renderTabelaLimites() {
+    const tensaoAtiva = $('tensao').value;
+    const V = CONFIG.VIBRACAO, O = CONFIG.OLEO, R = CONFIG.RPM;
+    const linhas = [
+      ...Object.entries(CONFIG.CORRENTE_POR_TENSAO).map(([tensao, C]) => ({
+        sensor: `Corrente (${tensao} V)` + (tensao === tensaoAtiva ? '<span class="tag-ativa">EM USO</span>' : ''),
+        alerta: `> ${fmt(C.alerta, 1)} A`,
+        critico: `> ${fmt(C.critico, 1)} A`,
+        inativa: tensao !== tensaoAtiva,
+      })),
+      { sensor: 'Nível de óleo', alerta: `< ${O.alerta}%`, critico: `< ${O.critico}%` },
+      { sensor: 'Vibração', alerta: `> ${fmt(V.alerta, 1)} ${V.unidade}`, critico: `> ${fmt(V.critico, 1)} ${V.unidade}` },
+      {
+        sensor: 'Velocidade',
+        alerta: `> rotação máx. do spindle (${fmt(R.alerta, 0)} RPM)`,
+        critico: `> 10% acima da máx. (${fmt(R.critico, 0)} RPM)`,
+      },
+    ];
+    $('tabelaLimites').innerHTML = linhas.map((l) => `
+      <tr class="${l.inativa ? 'inativa' : ''}">
+        <td>${l.sensor}</td><td>${l.alerta}</td><td>${l.critico}</td>
+      </tr>`).join('');
+  }
+
   function renderAlertas() {
+    renderTabelaLimites();
     const box = $('listaAlertas');
     if (!estado.alertas.length) {
       box.innerHTML = '<p class="vazio">Nenhum alerta nesta sessão.</p>';
@@ -825,6 +996,11 @@
     $('infoOperador').textContent = operador;
     $('infoTorno').textContent = torno;
     $('infoTopico').textContent = CONFIG.MQTT_TOPICO;
+
+    const tensao = $('tensao').value;
+    CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[tensao];
+    $('infoTensao').textContent = tensao + ' V';
+    renderLimites();
 
     $('login').classList.add('hidden');
     $('app').classList.remove('hidden');
