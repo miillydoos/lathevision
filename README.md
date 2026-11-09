@@ -145,4 +145,5 @@ O broker HiveMQ público não tem senha. Qualquer pessoa que souber o identifica
 As abas Histórico, Alertas, Relatórios, Equipamentos e Configurações ainda são placeholders e mostram o aviso "em breve". Para guardar o histórico, o caminho natural é salvar as leituras em uma planilha ou em um banco de dados.
 #   l a t h e v i s i o n  
  #   l a t h e v i s i o n  
+ #   l a t h e v i s i o n  
  
