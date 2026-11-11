@@ -1093,6 +1093,12 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
   }
 
   // Gráfico de barras (vibração): últimas 10 leituras, com degradê vermelho
+  // Aviso no meio do gráfico enquanto não chegam leituras reais do ESP32
+  function textoAguardando(W, H) {
+    return `<text x="${W / 2}" y="${H / 2 + 9}" text-anchor="middle" class="svg-sub"
+              style="font-size:26px">AGUARDANDO DADOS</text>`;
+  }
+
   function desenharBarras(svg, todos) {
     const W = 640, H = 230, P = 24, QTD = 10;
     const valores = todos.slice(-QTD);
@@ -1101,7 +1107,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
         <stop offset="0" stop-color="#ff3b3b"/><stop offset="1" stop-color="#8a0a0a"/>
       </linearGradient></defs>`;
 
-    if (!valores.length) { svg.innerHTML = defs + grade; return; }
+    if (!valores.length) { svg.innerHTML = defs + grade + textoAguardando(W, H); return; }
 
     const max = Math.max(...valores, CONFIG.VIBRACAO.alerta) * 1.15;
     const passo = (W - 2 * P) / QTD;
@@ -1122,7 +1128,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
     const grade = gradeSvg(W, H, P);
 
     if (valores.length < 2) {
-      svg.innerHTML = grade;
+      svg.innerHTML = grade + textoAguardando(W, H);
       return;
     }
 
@@ -1180,7 +1186,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
       ${ponteiro}
       <circle cx="${cx}" cy="${cy}" r="9" fill="${COR.vermelho}"/>
       <text x="${cx}" y="${cy + 46}" text-anchor="middle" class="svg-valor">${fmt(valor, 0)}</text>
-      <text x="${cx}" y="${cy + 66}" text-anchor="middle" class="svg-sub">RPM</text>`;
+      <text x="${cx}" y="${cy + 66}" text-anchor="middle" class="svg-sub">${valor === null ? 'AGUARDANDO DADOS' : 'RPM'}</text>`;
   }
 
   function desenharRosca(svg, pct, nivel) {
@@ -1196,7 +1202,8 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
               transform="rotate(-90 ${c} ${c})"/>
       <circle cx="${c}" cy="${c}" r="68" fill="#140000"/>
       <text x="${c}" y="${c + 8}" text-anchor="middle" class="svg-valor">${pct === null ? '--' : pct + '%'}</text>
-      <text x="${c}" y="${c + 30}" text-anchor="middle" class="svg-sub">NÍVEL DE ÓLEO</text>`;
+      <text x="${c}" y="${c + 30}" text-anchor="middle" class="svg-sub"
+            style="font-size:${pct === null ? 10 : 12}px">${pct === null ? 'AGUARDANDO DADOS' : 'NÍVEL DE ÓLEO'}</text>`;
   }
 
   // Manutenção preditiva: compara a média das leituras mais recentes com as anteriores
@@ -1266,7 +1273,9 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
       st = 'semip';
     } else if (!estado.conectado) {
       st = estado.falhas >= CONFIG.FALHAS_PARA_DESCONECTAR ? 'off' : 'conectando';
-    } else if (!estado.ultimaLeitura || Date.now() - estado.ultimaLeitura > CONFIG.TIMEOUT_SEM_SINAL_MS) {
+    } else if (!estado.ultimaLeitura) {
+      st = 'aguardando';                 // conectado, mas nenhuma leitura chegou ainda
+    } else if (Date.now() - estado.ultimaLeitura > CONFIG.TIMEOUT_SEM_SINAL_MS) {
       st = 'semsinal';
     } else {
       const vals = Object.values(niveis());
@@ -1275,11 +1284,11 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
 
     const TEXTO = {
       ok: 'OPERACIONAL', alerta: 'ATENÇÃO', critico: 'CRÍTICO',
-      semsinal: 'SEM SINAL', off: 'DESCONECTADO', conectando: 'CONECTANDO...', semip: 'INFORME O IP',
+      semsinal: 'SEM SINAL', aguardando: 'AGUARDANDO DADOS', off: 'DESCONECTADO', conectando: 'CONECTANDO...', semip: 'INFORME O IP',
     };
     const CLASSE = {
       ok: 'st-ok', alerta: 'st-alerta', critico: 'st-critico',
-      semsinal: 'st-alerta', off: 'st-off', conectando: 'st-off', semip: 'st-off',
+      semsinal: 'st-alerta', aguardando: 'st-alerta', off: 'st-off', conectando: 'st-off', semip: 'st-off',
     };
 
     $('status').className = 'status ' + CLASSE[st];
