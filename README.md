@@ -8,6 +8,21 @@ Sensores ──► ESP32-C3 Mini (firmware/) ──► MQTT (broker HiveMQ) ─�
 
 Sensores ativos nesta versão: corrente elétrica (SCT-013), nível de óleo (HC-SR04), velocidade (encoder) e vibração (acelerômetro I2C). O sensor de temperatura não faz parte desta versão.
 
+## ESP32-C3 Mini: painel direto pelo IP (Arduino IDE)
+
+O sketch `esp32c3/lathevision_c3/lathevision_c3.ino` é um arquivo único: o painel fica dentro dele e o ESP32 o entrega em `http://IP/`, em HTTP simples (sem https). Os dados chegam em tempo real por WebSocket (`ws://IP/ws`). Também existem `http://IP/dados` (JSON) e `http://IP/zerar` (zera o contador de voltas).
+
+1. **Placa:** em *Ferramentas → Placa → Gerenciador de Placas*, instale **esp32** (Espressif). Escolha **ESP32C3 Dev Module** e deixe **USB CDC On Boot: Enabled** (sem isso, o Monitor Serial fica vazio).
+2. **Bibliotecas:** em *Ferramentas → Gerenciar Bibliotecas*, instale **ESP Async WebServer** (de *ESP32Async*; ela pede para instalar junto a **Async TCP**, aceite) e **LiquidCrystal I2C** (de *Frank de Brabander*).
+3. **Senha do Wi-Fi:** abra o `.ino` e troque `SENHA_AQUI` pela senha da rede `WIFI_IOT_CFP601`. Não faça commit com a senha real.
+4. **Gravar:** conecte a placa pela USB, escolha a porta em *Ferramentas → Porta* e clique em **Carregar**. Se não gravar, segure **BOOT**, aperte e solte **RESET**, solte **BOOT** e tente de novo.
+5. **Descobrir o IP:** ele aparece no **display LCD** e no **Monitor Serial** (115200), na linha `Abra: http://IP/`. Se o Wi-Fi da oficina não responder em 20 s, o ESP32 cria a rede **LATHEVISION** (senha `lathevision`); conecte nela e use `http://192.168.4.1/`.
+6. **Abrir o painel:** no Chrome, digite o endereço **com `http://` na frente**, por exemplo `http://192.168.0.50/`. Faça o login: o painel conecta sozinho.
+
+**Se o Chrome mostrar "O site não pode fazer uma conexão segura":** o navegador tentou abrir `https://`, que o ESP32 não tem. Digite de novo com `http://` na frente. Se a barra de endereços completar sozinha com `https://`, passe a seta sobre a sugestão e apague com *Shift + Delete*. Se continuar, em `chrome://settings/security` desligue **Usar sempre conexões seguras** (ou clique em *Continuar no site* no aviso).
+
+**Mudou o `index.html`?** Dê dois cliques em `esp32\atualizar_painel.bat`. Ele copia o painel para dentro do `.ino` e do `painel.h`. Depois grave o ESP32 de novo.
+
 ## Estrutura do projeto
 
 ```

@@ -775,7 +775,8 @@
 
   const estado = {
     base: '',            // endereço do ESP32, ex.: http://192.168.0.50
-    busca: null,         // timer do próximo pedido de dados
+    ws: null,            // WebSocket aberto com o ESP32 (ws://IP/ws)
+    busca: null,         // timer do próximo pedido de dados / nova tentativa
     falhas: 0,           // pedidos seguidos que falharam
     conectado: false,
     ultimaLeitura: 0,
@@ -1191,13 +1192,68 @@
   }
 
   /* =====================================================================
-     CONEXÃO COM O ESP32 (HTTP comum, direto pelo IP)
-     O painel pede http://<IP>/dados a cada segundo. Funciona com o painel
-     aberto como arquivo no computador ou aberto pelo próprio IP do ESP32.
+     CONEXÃO COM O ESP32 (direto pelo IP, sem https)
+     1º tenta o WebSocket ws://<IP>/ws (tempo real).
+     Se o ESP32 não tiver WebSocket, pede http://<IP>/dados a cada segundo.
+     Funciona com o painel aberto como arquivo ou pelo próprio IP do ESP32.
      ===================================================================== */
-  function buscarDados() {
+  function pararConexao() {
+    clearTimeout(estado.busca);
+    const ws = estado.ws;
+    estado.ws = null;             // evita que o "fechou" abaixo tente reconectar
+    if (ws) ws.close();
+  }
+
+  function conectarWebSocket() {
     const base = estado.base;
     if (!base) return;
+    pararConexao();
+
+    const ws = new WebSocket(base.replace(/^http/, 'ws') + '/ws');
+    estado.ws = ws;
+    let abriu = false;
+    const desistir = setTimeout(() => { if (!abriu) ws.close(); }, CONFIG.TIMEOUT_PEDIDO_MS);
+
+    ws.onopen = () => {
+      if (estado.ws !== ws) return;
+      abriu = true;
+      clearTimeout(desistir);
+      estado.conectado = true;
+      estado.falhas = 0;
+      $('msgIp').textContent = '';
+      $('infoTopico').textContent = ws.url + ' (WebSocket)';
+      atualizarStatus();
+    };
+
+    ws.onmessage = (ev) => {
+      if (estado.ws !== ws) return;
+      try {
+        processarDados(JSON.parse(ev.data));
+      } catch (e) {
+        console.warn('Mensagem ignorada (JSON inválido):', ev.data);
+      }
+    };
+
+    ws.onclose = () => {
+      clearTimeout(desistir);
+      if (estado.ws !== ws) return;   // conexão antiga (IP trocado ou saída)
+      estado.ws = null;
+      if (abriu) {
+        // Caiu depois de funcionar: tenta de novo em instantes
+        estado.conectado = false;
+        atualizarStatus();
+        estado.busca = setTimeout(conectarWebSocket, CONFIG.INTERVALO_MS * 2);
+      } else {
+        // ESP32 sem WebSocket (ou fora do ar): segue com pedidos em /dados
+        $('infoTopico').textContent = base + '/dados (HTTP)';
+        buscarDados();
+      }
+    };
+  }
+
+  function buscarDados() {
+    const base = estado.base;
+    if (!base || estado.ws) return;
 
     const controle = new AbortController();
     const limite = setTimeout(() => controle.abort(), CONFIG.TIMEOUT_PEDIDO_MS);
@@ -1272,7 +1328,14 @@
     renderizar();
     estado.timer = setInterval(atualizarStatus, 1000);
     atualizarStatus();
-    $('ipEsp').focus();
+
+    // Painel aberto pelo próprio ESP32: conecta sozinho em ws://${location.host}/ws
+    if (ipDaPagina()) {
+      $('ipEsp').value = ipDaPagina();
+      conectarIp();
+    } else {
+      $('ipEsp').focus();
+    }
   }
 
   // Passo 2: IP do ESP32 (card "Conexão com o ESP32" no painel)
@@ -1298,8 +1361,8 @@
       return;
     }
 
-    // Se já havia uma conexão (troca de IP), para de buscar no IP antigo
-    clearTimeout(estado.busca);
+    // Se já havia uma conexão (troca de IP), fecha a do IP antigo
+    pararConexao();
     estado.conectado = false;
     estado.falhas = 0;
     estado.base = 'http://' + ip;
@@ -1310,7 +1373,7 @@
     $('ipTitulo').textContent = '📡 CONEXÃO COM O ESP32';
     $('ipTitulo').classList.remove('aviso-ip');
 
-    buscarDados();
+    conectarWebSocket();
     atualizarStatus();
   }
 
@@ -1324,9 +1387,11 @@
     $('operador').value = p.get('op');
     $('torno').value = p.get('torno');
     if (p.get('tensao')) $('tensao').value = p.get('tensao');
-    iniciar();
-    $('ipEsp').value = p.get('ip') || ipDaPagina();
-    conectarIp();
+    iniciar();                     // já conecta se a página veio do ESP32
+    if (!estado.base) {
+      $('ipEsp').value = p.get('ip') || ipDaPagina();
+      conectarIp();
+    }
   }
 
   function mostrarView(view, botao) {
@@ -1342,7 +1407,7 @@
   }
 
   function sair() {
-    clearTimeout(estado.busca);
+    pararConexao();
     estado.base = '';              // para de buscar dados
     location.reload();
   }
