@@ -351,6 +351,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
     .card-ip .btn-principal { width: auto; margin-top: 0; padding: 14px 22px; }
     .card-ip .msg-erro { margin-top: 8px; }
     .card-ip .aviso-ip { font-size: 1.4rem; color: #fff; }
+    .btn-acao { width: auto; padding: 14px 22px; }
     @media (max-width: 480px) {
       .card-ip .linha-ip { flex-direction: column; }
       .card-ip .btn-principal { width: 100%; }
@@ -612,7 +613,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
             <div class="card-titulo">〰️ VIBRAÇÃO</div>
             <div class="valor"><span id="vibValor">--</span><small>G</small></div>
           </div>
-          <span id="vibBadge" class="badge sem">SEM DADOS</span>
+          <span id="vibBadge" class="badge sem">AGUARDANDO DADOS</span>
           <p id="vibLim" class="limites"></p>
           <p id="vibTend" class="tendencia hidden"></p>
           <svg id="vibGrafico" class="grafico" viewBox="0 0 640 230" role="img" aria-label="Gráfico de barras da vibração"></svg>
@@ -624,7 +625,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
             <div class="card-titulo">⚡ CORRENTE ELÉTRICA</div>
             <div class="valor"><span id="corrValor">--</span><small>A</small></div>
           </div>
-          <span id="corrBadge" class="badge sem">SEM DADOS</span>
+          <span id="corrBadge" class="badge sem">AGUARDANDO DADOS</span>
           <p id="corrLim" class="limites"></p>
           <p id="corrTend" class="tendencia hidden"></p>
           <svg id="corrGrafico" class="grafico" viewBox="0 0 640 230" role="img" aria-label="Gráfico de linha da corrente"></svg>
@@ -636,7 +637,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
             <div class="card-titulo">🛢️ NÍVEL DE ÓLEO</div>
             <div class="valor"><span id="oleoValor">--</span><small>%</small></div>
           </div>
-          <span id="oleoBadge" class="badge sem">SEM DADOS</span>
+          <span id="oleoBadge" class="badge sem">AGUARDANDO DADOS</span>
           <p id="oleoLim" class="limites"></p>
           <svg id="oleoRosca" class="rosca" viewBox="0 0 220 220" role="img" aria-label="Nível de óleo"></svg>
         </article>
@@ -647,7 +648,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
             <div class="card-titulo">⚙️ VELOCIDADE</div>
             <div class="valor"><span id="rpmValor">--</span><small>RPM</small></div>
           </div>
-          <span id="rpmBadge" class="badge sem">SEM DADOS</span>
+          <span id="rpmBadge" class="badge sem">AGUARDANDO DADOS</span>
           <p id="rpmLim" class="limites"></p>
           <p class="tendencia">Sensor: <b>encoder</b> · Sentido de rotação: <b id="rpmSentido">--</b></p>
           <svg id="rpmMedidor" class="medidor" viewBox="0 0 260 215" role="img" aria-label="Velocidade em RPM"></svg>
@@ -693,6 +694,45 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
         </div>
       </section>
 
+      <!-- RELATÓRIOS -->
+      <section id="view-relatorios" class="hidden">
+        <h1 class="titulo-pagina">RELATÓRIOS</h1>
+        <p class="subtitulo">Resumo das leituras reais recebidas do ESP32 desde que o painel foi aberto.</p>
+        <div class="tabela-wrap">
+          <table>
+            <thead>
+              <tr><th>Sensor</th><th>Leituras</th><th>Mínimo</th><th>Média</th><th>Máximo</th><th>Última</th></tr>
+            </thead>
+            <tbody id="tabelaRelatorio"></tbody>
+          </table>
+        </div>
+        <button id="btnCsv" class="btn-principal btn-acao" type="button">BAIXAR HISTÓRICO (CSV)</button>
+      </section>
+
+      <!-- EQUIPAMENTOS -->
+      <section id="view-equipamentos" class="hidden">
+        <h1 class="titulo-pagina">EQUIPAMENTOS</h1>
+        <p class="subtitulo">Situação do ESP32 e dos sensores instalados no torno.</p>
+        <div class="tabela-wrap">
+          <table><tbody id="tabelaEsp"></tbody></table>
+        </div>
+        <h2 class="subtitulo-secao">Sensores</h2>
+        <div class="tabela-wrap">
+          <table>
+            <thead><tr><th>Medição</th><th>Sensor</th><th>Pinos (ESP32-C3)</th></tr></thead>
+            <tbody>
+              <tr><td>Corrente</td><td>SCT-013</td><td>GPIO 4</td></tr>
+              <tr><td>Vibração</td><td>MPU6050</td><td>SDA 6 · SCL 5</td></tr>
+              <tr><td>Nível de óleo</td><td>HC-SR04</td><td>TRIG 10 · ECHO 7</td></tr>
+              <tr><td>Velocidade</td><td>Encoder</td><td>A 20 · B 21</td></tr>
+              <tr><td>Display</td><td>LCD 16x2 I2C</td><td>SDA 6 · SCL 5</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button id="btnZerar" class="btn-principal btn-acao" type="button">ZERAR CONTADOR DE VOLTAS</button>
+        <p id="msgZerar" class="msg-erro"></p>
+      </section>
+
       <!-- CONFIGURAÇÕES -->
       <section id="view-config" class="hidden">
         <h1 class="titulo-pagina">CONFIGURAÇÕES</h1>
@@ -730,6 +770,8 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
       <button class="nav-btn ativo" data-view="painel"><span class="ico">⌂</span>PAINEL</button>
       <button class="nav-btn" data-view="historico"><span class="ico">📈</span>HISTÓRICO</button>
       <button class="nav-btn" data-view="alertas"><span class="ico">⚠️</span>ALERTAS</button>
+      <button class="nav-btn" data-view="relatorios"><span class="ico">☰</span>RELATÓRIOS</button>
+      <button class="nav-btn" data-view="equipamentos"><span class="ico">⚙️</span>EQUIPAMENTOS</button>
       <button class="nav-btn" data-view="config"><span class="ico">🛠️</span>CONFIGURAÇÕES</button>
       <button class="nav-btn" data-view="sair"><span class="ico">⇥</span>SAIR</button>
     </nav>
@@ -775,7 +817,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
      ===================================================================== */
   const $ = (id) => document.getElementById(id);
 
-  const ROTULO = { normal: '✓ NORMAL', alerta: '⚠ ALERTA', critico: '✖ CRÍTICO', sem: 'SEM DADOS' };
+  const ROTULO = { normal: '✓ NORMAL', alerta: '⚠ ALERTA', critico: '✖ CRÍTICO', sem: 'AGUARDANDO DADOS' };
   const NOME = { vibracao: 'Vibração', corrente: 'Corrente elétrica', rpm: 'Velocidade', oleo: 'Nível de óleo' };
   const COR = { normal: '#3ddc6b', alerta: '#f4c430', critico: '#ff3b3b', vermelho: '#e8141c' };
 
@@ -790,6 +832,14 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
     sentido: null,
     series: { vibracao: [], corrente: [] },
     registros: [],
+    // Resumo da sessão para a aba Relatórios (só leituras reais)
+    resumo: {
+      vibracao: { n: 0, soma: 0, min: null, max: null },
+      corrente: { n: 0, soma: 0, min: null, max: null },
+      rpm: { n: 0, soma: 0, min: null, max: null },
+      oleo: { n: 0, soma: 0, min: null, max: null },
+    },
+    esp: { rssi: null, uptime: null, voltas: null, hora: null },   // dados do ESP32 (aba Equipamentos)
     alertas: [],
     nivelAnterior: {},
     timer: null,
@@ -865,6 +915,19 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
     if (op !== null && op >= 0) estado.leitura.oleo = Math.round(Math.min(100, op));
     else if (oc !== null && oc > 0) estado.leitura.oleo = oleoPct(oc); // valor <= 0 = leitura inválida
 
+    // Resumo da sessão: entra só o que chegou válido NESTA mensagem
+    const oleoNovo = (op !== null && op >= 0) || (oc !== null && oc > 0);
+    acumula('vibracao', v !== null && v >= 0);
+    acumula('corrente', c !== null && c >= 0);
+    acumula('rpm', r !== null && r >= 0);
+    acumula('oleo', oleoNovo);
+
+    // Dados do próprio ESP32 (aba Equipamentos)
+    estado.esp.rssi = numero(d.rssi);
+    estado.esp.uptime = numero(d.uptime_s);
+    estado.esp.voltas = numero(d.voltas);
+    estado.esp.hora = hora();
+
     estado.ultimaLeitura = Date.now();
     estado.registros.push({ hora: hora(), ...estado.leitura });
     if (estado.registros.length > 50) estado.registros.shift();
@@ -875,7 +938,81 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
       // Atualiza em tempo real a aba que estiver aberta
       if (!$('view-historico').classList.contains('hidden')) renderHistorico();
       if (!$('view-alertas').classList.contains('hidden')) renderAlertas();
+      if (!$('view-relatorios').classList.contains('hidden')) renderRelatorio();
+      if (!$('view-equipamentos').classList.contains('hidden')) renderEquipamentos();
     }
+  }
+
+  function acumula(chave, chegou) {
+    if (!chegou) return;
+    const valor = estado.leitura[chave];
+    const s = estado.resumo[chave];
+    s.n++;
+    s.soma += valor;
+    s.min = s.min === null ? valor : Math.min(s.min, valor);
+    s.max = s.max === null ? valor : Math.max(s.max, valor);
+  }
+
+  /* =====================================================================
+     RELATÓRIOS E EQUIPAMENTOS
+     ===================================================================== */
+  function renderRelatorio() {
+    const linhas = [
+      ['Corrente (A)', 'corrente', 1],
+      ['Vibração (G)', 'vibracao', 2],
+      ['Velocidade (RPM)', 'rpm', 0],
+      ['Nível de óleo (%)', 'oleo', 0],
+    ].map(([nome, chave, casas]) => {
+      const s = estado.resumo[chave];
+      const media = s.n ? s.soma / s.n : null;
+      return `<tr><td>${nome}</td><td>${s.n}</td><td>${fmt(s.min, casas)}</td>
+        <td>${fmt(media, casas)}</td><td>${fmt(s.max, casas)}</td><td>${fmt(estado.leitura[chave], casas)}</td></tr>`;
+    }).join('');
+    $('tabelaRelatorio').innerHTML = linhas;
+  }
+
+  function baixarCsv() {
+    if (!estado.registros.length) {
+      alert('Ainda não chegou nenhuma leitura do ESP32.');
+      return;
+    }
+    const cab = 'Hora;Vibração (G);Corrente (A);RPM;Óleo (%)';
+    const linhas = estado.registros.map((r) =>
+      [r.hora, fmt(r.vibracao, 2), fmt(r.corrente, 1), fmt(r.rpm, 0), fmt(r.oleo, 0)].join(';'));
+    const blob = new Blob(['﻿' + [cab, ...linhas].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `lathevision-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function renderEquipamentos() {
+    const E = estado.esp;
+    const tempo = E.uptime === null ? '--'
+      : `${Math.floor(E.uptime / 3600)} h ${Math.floor((E.uptime % 3600) / 60)} min`;
+    const linhas = [
+      ['Torno', $('infoTorno').textContent],
+      ['Endereço do ESP32', estado.base || 'não conectado'],
+      ['Conexão', estado.ws ? 'WebSocket (tempo real)' : estado.base ? 'HTTP (/dados)' : '--'],
+      ['Situação', $('statusTxt').textContent],
+      ['Sinal Wi-Fi', E.rssi ? `${E.rssi} dBm` : (E.rssi === 0 ? 'rede própria do ESP32' : '--')],
+      ['Tempo ligado', tempo],
+      ['Voltas do encoder', fmt(E.voltas, 0)],
+      ['Última leitura', E.hora || 'aguardando dados'],
+    ];
+    $('tabelaEsp').innerHTML = linhas.map(([a, b]) => `<tr><th>${a}</th><td>${b}</td></tr>`).join('');
+  }
+
+  function zerarVoltas() {
+    if (!estado.base) {
+      $('msgZerar').textContent = 'Conecte ao ESP32 primeiro (aba Painel).';
+      return;
+    }
+    fetch(estado.base + '/zerar', { method: 'POST', cache: 'no-store' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); })
+      .then(() => { $('msgZerar').textContent = 'Contador de voltas zerado.'; })
+      .catch(() => { $('msgZerar').textContent = 'O ESP32 não respondeu ao pedido de zerar.'; });
   }
 
   function verificarAlertas() {
@@ -1336,7 +1473,7 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
     atualizarStatus();
 
     // Painel aberto pelo próprio ESP32: conecta sozinho em ws://${location.host}/ws
-    if (ipDaPagina()) {
+    if (ipDaPagina() && !estado.base) {
       $('ipEsp').value = ipDaPagina();
       conectarIp();
     } else {
@@ -1401,13 +1538,15 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
   }
 
   function mostrarView(view, botao) {
-    ['painel', 'alertas', 'historico', 'config'].forEach((id) => {
+    ['painel', 'alertas', 'historico', 'relatorios', 'equipamentos', 'config'].forEach((id) => {
       $('view-' + id).classList.toggle('hidden', id !== view);
     });
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('ativo', b === botao));
 
     if (view === 'alertas') renderAlertas();
     if (view === 'historico') renderHistorico();
+    if (view === 'relatorios') renderRelatorio();
+    if (view === 'equipamentos') { $('msgZerar').textContent = ''; renderEquipamentos(); }
 
     window.scrollTo(0, 0);
   }
@@ -1432,6 +1571,8 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
   });
   $('torno').addEventListener('keydown', (e) => { if (e.key === 'Enter') iniciar(); });
   $('btnConectar').addEventListener('click', conectarIp);
+  $('btnCsv').addEventListener('click', baixarCsv);
+  $('btnZerar').addEventListener('click', zerarVoltas);
   $('ipEsp').addEventListener('keydown', (e) => { if (e.key === 'Enter') conectarIp(); });
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
@@ -1442,6 +1583,14 @@ const char PAINEL_HTML[] PROGMEM = R"lvpainel(
   });
 
   retomarSessaoDoEndereco();
+
+  // Painel aberto pelo próprio ESP32 (http://IP/): já abre o WebSocket em
+  // ws://${location.host}/ws ao carregar a página, mesmo antes do login.
+  // Assim, depois do login, os gráficos já aparecem com dados reais.
+  if (ipDaPagina() && !estado.base) {
+    $('ipEsp').value = ipDaPagina();
+    conectarIp();
+  }
   </script>
 </body>
 </html>

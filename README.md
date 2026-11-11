@@ -16,7 +16,7 @@ O sketch `esp32c3/lathevision_c3/lathevision_c3.ino` é um arquivo único: o pai
 2. **Bibliotecas:** em *Ferramentas → Gerenciar Bibliotecas*, instale **ESP Async WebServer** (de *ESP32Async*; ela pede para instalar junto a **Async TCP**, aceite) e **LiquidCrystal I2C** (de *Frank de Brabander*).
 3. **Senha do Wi-Fi:** abra o `.ino` e troque `SENHA_AQUI` pela senha da rede `WIFI_IOT_CFP601`. Não faça commit com a senha real.
 4. **Gravar:** conecte a placa pela USB, escolha a porta em *Ferramentas → Porta* e clique em **Carregar**. Se não gravar, segure **BOOT**, aperte e solte **RESET**, solte **BOOT** e tente de novo.
-5. **Descobrir o IP:** ele aparece no **display LCD** e no **Monitor Serial** (115200), na linha `Abra: http://IP/`. Se o Wi-Fi da oficina não responder em 20 s, o ESP32 cria a rede **LATHEVISION** (senha `lathevision`); conecte nela e use `http://192.168.4.1/`.
+5. **Descobrir o IP:** ele aparece no **display LCD** e no **Monitor Serial** (115200), na linha `Abra no navegador: http://IP/`. Se o Wi-Fi da oficina não responder em 20 s, o ESP32 cria a rede **LATHEVISION** (senha `lathevision`); conecte nela e use `http://192.168.4.1/`.
 6. **Abrir o painel:** no Chrome, digite o endereço **com `http://` na frente**, por exemplo `http://192.168.0.50/`. Faça o login: o painel conecta sozinho.
 
 **Se o Chrome mostrar "O site não pode fazer uma conexão segura":** o navegador tentou abrir `https://`, que o ESP32 não tem. Digite de novo com `http://` na frente. Se a barra de endereços completar sozinha com `https://`, passe a seta sobre a sugestão e apague com *Shift + Delete*. Se continuar, em `chrome://settings/security` desligue **Usar sempre conexões seguras** (ou clique em *Continuar no site* no aviso).
