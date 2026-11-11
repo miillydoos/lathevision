@@ -531,9 +531,6 @@
       <p class="tagline">SUA PRODUÇÃO, SEMPRE À VISTA</p>
       <h2 class="login-titulo">Monitoramento Remoto</h2>
 
-      <label class="campo" for="ipEsp">IP do ESP32 (aparece no Monitor Serial)</label>
-      <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" autofocus />
-
       <label class="campo" for="operador">Nome do operador</label>
       <input id="operador" type="text" placeholder="Digite seu nome" autocomplete="off" />
 
@@ -548,6 +545,23 @@
 
       <button id="btnIniciar" class="btn-principal" type="button">INICIAR MONITORAMENTO</button>
       <p id="msgLogin" class="msg-erro"></p>
+    </div>
+  </section>
+
+  <!-- ================= CONEXÃO COM O ESP32 (depois do login) ================= -->
+  <section id="telaIp" class="login hidden">
+    <div class="login-card">
+      <h1 class="logo">LATHE<span>VISION</span></h1>
+      <p class="tagline">SUA PRODUÇÃO, SEMPRE À VISTA</p>
+      <h2 class="login-titulo">Conexão com o ESP32</h2>
+      <p class="tagline">Olá, <b id="ipOperador">-</b>. Informe o IP do ESP32 do torno (ele aparece no Monitor Serial).</p>
+
+      <label class="campo" for="ipEsp">IP do ESP32</label>
+      <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
+
+      <button id="btnConectar" class="btn-principal" type="button">CONECTAR</button>
+      <button id="btnVoltarLogin" class="btn-principal" type="button" style="background:transparent;border:1px solid currentColor;margin-top:8px">VOLTAR</button>
+      <p id="msgIp" class="msg-erro"></p>
     </div>
   </section>
 
@@ -1202,6 +1216,7 @@
   /* =====================================================================
      NAVEGAÇÃO E EVENTOS
      ===================================================================== */
+  // Passo 1: login (operador, torno e tensão)
   function iniciar() {
     const operador = $('operador').value.trim();
     const torno = $('torno').value.trim();
@@ -1210,21 +1225,11 @@
       $('msgLogin').textContent = 'Preencha o nome do operador e a identificação do torno.';
       return;
     }
-    const ip = $('ipEsp').value.trim().replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
-    if (!ip) {
-      $('msgLogin').textContent = 'Informe o IP do ESP32.';
-      return;
-    }
-    if (location.protocol === 'https:') {
-      $('msgLogin').textContent = 'Abra o painel por http:// ou pelo arquivo local: páginas https não podem usar ws:// (sem criptografia).';
-      return;
-    }
-    try { localStorage.setItem('lathevision-ip', ip); } catch (e) { /* ignora */ }
-    estado.wsUrl = ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${CONFIG.WS_PORTA}`;
+    $('msgLogin').textContent = '';
 
     $('infoOperador').textContent = operador;
     $('infoTorno').textContent = torno;
-    $('infoTopico').textContent = estado.wsUrl;
+    $('ipOperador').textContent = operador;
 
     const tensao = $('tensao').value;
     CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[tensao];
@@ -1232,6 +1237,26 @@
     renderLimites();
 
     $('login').classList.add('hidden');
+    $('telaIp').classList.remove('hidden');
+    $('ipEsp').focus();
+  }
+
+  // Passo 2: IP do ESP32 e conexão
+  function conectarIp() {
+    const ip = $('ipEsp').value.trim().replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
+    if (!ip) {
+      $('msgIp').textContent = 'Informe o IP do ESP32.';
+      return;
+    }
+    if (location.protocol === 'https:') {
+      $('msgIp').textContent = 'Abra o painel por http:// ou pelo arquivo local: páginas https não podem usar ws:// (sem criptografia).';
+      return;
+    }
+    try { localStorage.setItem('lathevision-ip', ip); } catch (e) { /* ignora */ }
+    estado.wsUrl = ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${CONFIG.WS_PORTA}`;
+    $('infoTopico').textContent = estado.wsUrl;
+
+    $('telaIp').classList.add('hidden');
     $('app').classList.remove('hidden');
 
     conectarWS();
@@ -1270,6 +1295,12 @@
     iniciar();
   });
   $('torno').addEventListener('keydown', (e) => { if (e.key === 'Enter') iniciar(); });
+  $('btnConectar').addEventListener('click', conectarIp);
+  $('ipEsp').addEventListener('keydown', (e) => { if (e.key === 'Enter') conectarIp(); });
+  $('btnVoltarLogin').addEventListener('click', () => {
+    $('telaIp').classList.add('hidden');
+    $('login').classList.remove('hidden');
+  });
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
