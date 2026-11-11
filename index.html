@@ -339,6 +339,16 @@
     /* ---------- CONFIGURAÇÕES ---------- */
     .card-config { padding: 8px 26px; margin-top: 22px; }
 
+    /* Parte específica para o IP do ESP32 (no painel) */
+    .card-ip .linha-ip { display: flex; gap: 10px; margin-top: 12px; }
+    .card-ip .linha-ip input { flex: 1; min-width: 0; }
+    .card-ip .btn-principal { width: auto; margin-top: 0; padding: 14px 22px; }
+    .card-ip .msg-erro { margin-top: 8px; }
+    @media (max-width: 480px) {
+      .card-ip .linha-ip { flex-direction: column; }
+      .card-ip .btn-principal { width: 100%; }
+    }
+
     .opcao {
       display: flex;
       align-items: center;
@@ -548,23 +558,6 @@
     </div>
   </section>
 
-  <!-- ================= CONEXÃO COM O ESP32 (depois do login) ================= -->
-  <section id="telaIp" class="login hidden">
-    <div class="login-card">
-      <h1 class="logo">LATHE<span>VISION</span></h1>
-      <p class="tagline">SUA PRODUÇÃO, SEMPRE À VISTA</p>
-      <h2 class="login-titulo">Conexão com o ESP32</h2>
-      <p class="tagline">Olá, <b id="ipOperador">-</b>. Informe o IP do ESP32 do torno (ele aparece no Monitor Serial).</p>
-
-      <label class="campo" for="ipEsp">IP do ESP32</label>
-      <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
-
-      <button id="btnConectar" class="btn-principal" type="button">CONECTAR</button>
-      <button id="btnVoltarLogin" class="btn-principal" type="button" style="background:transparent;border:1px solid currentColor;margin-top:8px">VOLTAR</button>
-      <p id="msgIp" class="msg-erro"></p>
-    </div>
-  </section>
-
   <!-- ================= APLICATIVO ================= -->
   <div id="app" class="hidden">
 
@@ -591,8 +584,19 @@
           <div>Operador: <b id="infoOperador">-</b></div>
           <div>Torno: <b id="infoTorno">-</b></div>
           <div>Tensão: <b id="infoTensao">-</b></div>
-          <small>Conexão: <span id="infoTopico"></span></small>
+          <small>Conexão: <span id="infoTopico">não conectado</span></small>
         </div>
+
+        <!-- Conexão com o ESP32 -->
+        <article class="card card-ip">
+          <div class="card-titulo">📡 CONEXÃO COM O ESP32</div>
+          <label class="campo" for="ipEsp">IP do ESP32 (aparece no Monitor Serial)</label>
+          <div class="linha-ip">
+            <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
+            <button id="btnConectar" class="btn-principal" type="button">CONECTAR</button>
+          </div>
+          <p id="msgIp" class="msg-erro"></p>
+        </article>
 
         <div class="grade-cards">
         <!-- Vibração -->
@@ -1113,7 +1117,9 @@
 
   function atualizarStatus() {
     let st;
-    if (!estado.conectado) {
+    if (!estado.wsUrl) {
+      st = 'semip';
+    } else if (!estado.conectado) {
       st = estado.ultimaLeitura ? 'off' : 'conectando';
     } else if (!estado.ultimaLeitura || Date.now() - estado.ultimaLeitura > CONFIG.TIMEOUT_SEM_SINAL_MS) {
       st = 'semsinal';
@@ -1124,11 +1130,11 @@
 
     const TEXTO = {
       ok: 'OPERACIONAL', alerta: 'ATENÇÃO', critico: 'CRÍTICO',
-      semsinal: 'SEM SINAL', off: 'DESCONECTADO', conectando: 'CONECTANDO...',
+      semsinal: 'SEM SINAL', off: 'DESCONECTADO', conectando: 'CONECTANDO...', semip: 'INFORME O IP',
     };
     const CLASSE = {
       ok: 'st-ok', alerta: 'st-alerta', critico: 'st-critico',
-      semsinal: 'st-alerta', off: 'st-off', conectando: 'st-off',
+      semsinal: 'st-alerta', off: 'st-off', conectando: 'st-off', semip: 'st-off',
     };
 
     $('status').className = 'status ' + CLASSE[st];
@@ -1192,14 +1198,16 @@
     estado.client = ws;
 
     ws.onopen = () => {
+      if (estado.client !== ws) return ws.close();
       estado.conectado = true;
       atualizarStatus();
     };
 
     ws.onclose = () => {
+      if (estado.client !== ws) return;   // conexão antiga (IP trocado ou saída)
       estado.conectado = false;
       atualizarStatus();
-      if (estado.client === ws) estado.reconexao = setTimeout(conectarWS, CONFIG.WS_RECONEXAO_MS);
+      estado.reconexao = setTimeout(conectarWS, CONFIG.WS_RECONEXAO_MS);
     };
 
     ws.onerror = () => console.error('WebSocket: falha ao conectar em', estado.wsUrl);
@@ -1229,7 +1237,6 @@
 
     $('infoOperador').textContent = operador;
     $('infoTorno').textContent = torno;
-    $('ipOperador').textContent = operador;
 
     const tensao = $('tensao').value;
     CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[tensao];
@@ -1237,11 +1244,15 @@
     renderLimites();
 
     $('login').classList.add('hidden');
-    $('telaIp').classList.remove('hidden');
+    $('app').classList.remove('hidden');
+
+    renderizar();
+    estado.timer = setInterval(atualizarStatus, 1000);
+    atualizarStatus();
     $('ipEsp').focus();
   }
 
-  // Passo 2: IP do ESP32 e conexão
+  // Passo 2: IP do ESP32 (card "Conexão com o ESP32" no painel)
   function conectarIp() {
     const ip = $('ipEsp').value.trim().replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
     if (!ip) {
@@ -1253,15 +1264,21 @@
       return;
     }
     try { localStorage.setItem('lathevision-ip', ip); } catch (e) { /* ignora */ }
+
+    // Se já havia uma conexão (troca de IP), fecha sem reconectar nela
+    clearTimeout(estado.reconexao);
+    const antigo = estado.client;
+    estado.client = null;
+    if (antigo) antigo.close();
+    estado.conectado = false;
+
     estado.wsUrl = ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${CONFIG.WS_PORTA}`;
     $('infoTopico').textContent = estado.wsUrl;
-
-    $('telaIp').classList.add('hidden');
-    $('app').classList.remove('hidden');
+    $('msgIp').textContent = '';
+    $('btnConectar').textContent = 'RECONECTAR';
 
     conectarWS();
-    renderizar();
-    estado.timer = setInterval(atualizarStatus, 1000);
+    atualizarStatus();
   }
 
   function mostrarView(view, botao) {
@@ -1297,10 +1314,6 @@
   $('torno').addEventListener('keydown', (e) => { if (e.key === 'Enter') iniciar(); });
   $('btnConectar').addEventListener('click', conectarIp);
   $('ipEsp').addEventListener('keydown', (e) => { if (e.key === 'Enter') conectarIp(); });
-  $('btnVoltarLogin').addEventListener('click', () => {
-    $('telaIp').classList.add('hidden');
-    $('login').classList.remove('hidden');
-  });
 
   document.querySelectorAll('.nav-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
