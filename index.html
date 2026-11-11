@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LATHEVISION · Monitoramento Remoto</title>
 
-  <!-- Biblioteca MQTT para navegador (conexão WebSocket) -->
-  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.3.5/dist/mqtt.min.js"></script>
 
   <style>
     :root {
@@ -545,6 +543,9 @@
         <option value="380">380 V</option>
       </select>
 
+      <label class="campo" for="ipEsp">IP do ESP32 (aparece no Monitor Serial)</label>
+      <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
+
       <button id="btnIniciar" class="btn-principal" type="button">INICIAR MONITORAMENTO</button>
       <p id="msgLogin" class="msg-erro"></p>
     </div>
@@ -576,7 +577,7 @@
           <div>Operador: <b id="infoOperador">-</b></div>
           <div>Torno: <b id="infoTorno">-</b></div>
           <div>Tensão: <b id="infoTensao">-</b></div>
-          <small>Tópico MQTT: <span id="infoTopico"></span></small>
+          <small>Conexão: <span id="infoTopico"></span></small>
         </div>
 
         <div class="grade-cards">
@@ -727,8 +728,8 @@
      CONFIGURAÇÃO — ajuste aqui
      ===================================================================== */
   const CONFIG = {
-    MQTT_URL: 'wss://broker.hivemq.com:8884/mqtt', // WebSocket seguro (o GitHub Pages usa HTTPS)
-    MQTT_TOPICO: 'torno/torno-romi-01/telemetria', // mesmo tópico do firmware: torno/<TORNO_ID>/telemetria
+    WS_PORTA: 81,                                  // mesma porta do WS_PORTA no firmware (ws://<IP>:81)
+    WS_RECONEXAO_MS: 3000,                         // tempo entre tentativas de reconexão
     PONTOS_GRAFICO: 30,                            // quantas leituras aparecem nos gráficos
     TIMEOUT_SEM_SINAL_MS: 10000,                   // sem dados por mais que isso = SEM SINAL
 
@@ -769,6 +770,8 @@
 
   const estado = {
     client: null,
+    wsUrl: '',
+    reconexao: null,
     conectado: false,
     ultimaLeitura: 0,
     leitura: { temperatura: null, vibracao: null, corrente: null, rpm: null, oleo: null },
@@ -832,7 +835,7 @@
   }
 
   /* =====================================================================
-     RECEBIMENTO DOS DADOS (MQTT)
+     RECEBIMENTO DOS DADOS (WebSocket)
      Formato do firmware: {"corrente_a":7.4,"vibracao_g":0.35,"rpm":1400,"sentido":1,
                            "temperatura_c":42.5,"distancia_cm":12.3,"oleo_pct":64}
      Valor -1 = sensor sem leitura (é ignorado)
@@ -1192,35 +1195,33 @@
   }
 
   /* =====================================================================
-     CONEXÃO MQTT
+     CONEXÃO WEBSOCKET (direto com o ESP32 pelo IP)
      ===================================================================== */
-  function conectarMQTT() {
-    estado.client = mqtt.connect(CONFIG.MQTT_URL, {
-      clientId: 'lathevision-web-' + Math.random().toString(16).slice(2, 10),
-      reconnectPeriod: 3000,
-      connectTimeout: 10000,
-    });
+  function conectarWS() {
+    clearTimeout(estado.reconexao);
+    const ws = new WebSocket(estado.wsUrl);
+    estado.client = ws;
 
-    estado.client.on('connect', () => {
+    ws.onopen = () => {
       estado.conectado = true;
-      estado.client.subscribe(CONFIG.MQTT_TOPICO, { qos: 0 });
       atualizarStatus();
-    });
+    };
 
-    estado.client.on('close', () => {
+    ws.onclose = () => {
       estado.conectado = false;
       atualizarStatus();
-    });
+      if (estado.client === ws) estado.reconexao = setTimeout(conectarWS, CONFIG.WS_RECONEXAO_MS);
+    };
 
-    estado.client.on('error', (err) => console.error('MQTT:', err && err.message));
+    ws.onerror = () => console.error('WebSocket: falha ao conectar em', estado.wsUrl);
 
-    estado.client.on('message', (topico, payload) => {
+    ws.onmessage = (ev) => {
       try {
-        processarDados(JSON.parse(new TextDecoder().decode(payload)));
+        processarDados(JSON.parse(ev.data));
       } catch (e) {
         console.warn('Mensagem ignorada (JSON inválido):', e);
       }
-    });
+    };
   }
 
   /* =====================================================================
@@ -1234,14 +1235,21 @@
       $('msgLogin').textContent = 'Preencha o nome do operador e a identificação do torno.';
       return;
     }
-    if (typeof mqtt === 'undefined') {
-      $('msgLogin').textContent = 'Não foi possível carregar a biblioteca MQTT. Verifique sua internet.';
+    const ip = $('ipEsp').value.trim().replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
+    if (!ip) {
+      $('msgLogin').textContent = 'Informe o IP do ESP32.';
       return;
     }
+    if (location.protocol === 'https:') {
+      $('msgLogin').textContent = 'Abra o painel por http:// ou pelo arquivo local: páginas https não podem usar ws:// (sem criptografia).';
+      return;
+    }
+    try { localStorage.setItem('lathevision-ip', ip); } catch (e) { /* ignora */ }
+    estado.wsUrl = ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${CONFIG.WS_PORTA}`;
 
     $('infoOperador').textContent = operador;
     $('infoTorno').textContent = torno;
-    $('infoTopico').textContent = CONFIG.MQTT_TOPICO;
+    $('infoTopico').textContent = estado.wsUrl;
 
     const tensao = $('tensao').value;
     CONFIG.CORRENTE = CONFIG.CORRENTE_POR_TENSAO[tensao];
@@ -1251,7 +1259,7 @@
     $('login').classList.add('hidden');
     $('app').classList.remove('hidden');
 
-    conectarMQTT();
+    conectarWS();
     renderizar();
     estado.timer = setInterval(atualizarStatus, 1000);
   }
@@ -1269,11 +1277,14 @@
   }
 
   function sair() {
-    if (estado.client) estado.client.end(true);
+    const ws = estado.client;
+    estado.client = null;          // evita a reconexão automática
+    if (ws) ws.close();
     location.reload();
   }
 
   carregarOpcoes();
+  try { $('ipEsp').value = localStorage.getItem('lathevision-ip') || ''; } catch (e) { /* ignora */ }
   ['cfgAuto', 'cfgSom', 'cfgPreditiva'].forEach((id) => $(id).addEventListener('change', salvarOpcoes));
 
   $('btnIniciar').addEventListener('click', () => {

@@ -1,5 +1,5 @@
 /*
- * LATHEVISION - ESP32 -> MQTT -> painel web
+ * LATHEVISION - ESP32 -> WebSocket (IP local) -> painel web
  *
  * Sensores:
  *   - SCT-013 (corrente elétrica)   -> GPIO 32 (ADC)
@@ -7,25 +7,33 @@
  *   - Encoder (velocidade / RPM)    -> GPIO 25 (canal A)
  *   - HC-SR04 (nível de óleo)       -> TRIG 5, ECHO 18
  *
- * Publica a cada 1 segundo no tópico TOPICO:
+ * O ESP32 vira um servidor WebSocket na porta WS_PORTA. A cada 1 segundo
+ * envia para todos os painéis conectados (ws://<IP do ESP32>:81):
  *   {"vibracao":0.350,"corrente":7.40,"rpm":1400,"oleo_cm":12.3}
+ * O IP aparece no Monitor Serial depois que o Wi-Fi conecta.
  *
- * Bibliotecas: PubSubClient (instale pelo Gerenciador de Bibliotecas).
+ * Bibliotecas: "WebSockets" de Markus Sattler (Links2004)
+ *              (instale pelo Gerenciador de Bibliotecas).
  * Placa: ESP32 Dev Module (ESP32 DevKit V1).
  */
 
 #include <WiFi.h>
 #include <Wire.h>
-#include <PubSubClient.h>
+#include <WebSocketsServer.h>
 
 // ---------------- Rede ----------------
 const char* WIFI_SSID  = "SUA_REDE";
 const char* WIFI_SENHA = "SUA_SENHA";   // não envie o código com a senha real para o GitHub
 
-// ---------------- MQTT ----------------
-const char* MQTT_BROKER = "broker.hivemq.com";
-const int   MQTT_PORTA  = 1883;
-const char* TOPICO      = "lathevision/torno01/dados";   // igual a CONFIG.MQTT_TOPICO no painel
+// ---------------- WebSocket ----------------
+const uint16_t WS_PORTA = 81;   // o painel conecta em ws://<IP do ESP32>:81
+
+// (Opcional) IP fixo, para não precisar descobrir o IP toda vez.
+// Deixe USAR_IP_FIXO = false para receber o IP do roteador (DHCP).
+const bool USAR_IP_FIXO = false;
+IPAddress IP_FIXO(192, 168, 0, 50);
+IPAddress GATEWAY(192, 168, 0, 1);
+IPAddress MASCARA(255, 255, 255, 0);
 
 // ---------------- Pinos ----------------
 const int PIN_TRIG = 5;    // HC-SR04 (óleo)
@@ -45,8 +53,7 @@ unsigned long pulsosAnteriores = 0;
 unsigned long ultimoCalculo = 0;
 unsigned long ultimoEnvio = 0;
 
-WiFiClient clienteWifi;
-PubSubClient mqtt(clienteWifi);
+WebSocketsServer ws(WS_PORTA);
 
 void IRAM_ATTR contarPulso() {
   pulsos++;
@@ -55,26 +62,25 @@ void IRAM_ATTR contarPulso() {
 // ================= Conexões =================
 void conectarWiFi() {
   WiFi.mode(WIFI_STA);
+  if (USAR_IP_FIXO) WiFi.config(IP_FIXO, GATEWAY, MASCARA, GATEWAY);
   WiFi.begin(WIFI_SSID, WIFI_SENHA);
   Serial.print("Conectando ao Wi-Fi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println(" OK: " + WiFi.localIP().toString());
+  Serial.println(" OK");
+  Serial.printf("Painel: use o endereço ws://%s:%u
+", WiFi.localIP().toString().c_str(), WS_PORTA);
 }
 
-void conectarMQTT() {
-  while (!mqtt.connected()) {
-    String id = "torno01-" + String(random(0xffff), HEX);
-    Serial.print("Conectando ao MQTT... ");
-    if (mqtt.connect(id.c_str())) {
-      Serial.println("OK");
-    } else {
-      Serial.print("falhou, código ");
-      Serial.println(mqtt.state());
-      delay(2000);
-    }
+void eventoWebSocket(uint8_t num, WStype_t tipo, uint8_t* dados, size_t tam) {
+  if (tipo == WStype_CONNECTED) {
+    Serial.printf("[WS] Painel %u conectado (%s)
+", num, ws.remoteIP(num).toString().c_str());
+  } else if (tipo == WStype_DISCONNECTED) {
+    Serial.printf("[WS] Painel %u desconectado
+", num);
   }
 }
 
@@ -149,7 +155,8 @@ bool lerAceleracao(float &x, float &y, float &z) {
   Wire.write(0x3B);  // ACCEL_XOUT_H
   if (Wire.endTransmission(false) != 0) return false;
 
-  Wire.requestFrom(MPU_ADDR, 6, true);
+  // Tipos explícitos: com "int" o compilador do ESP32 não sabe qual requestFrom usar (erro "ambiguous")
+  Wire.requestFrom((uint8_t)MPU_ADDR, (uint8_t)6, true);
   if (Wire.available() < 6) return false;
 
   x = lerInt16() / LSB_POR_G;
@@ -199,15 +206,15 @@ void setup() {
 
   iniciarMPU();
   conectarWiFi();
-  mqtt.setServer(MQTT_BROKER, MQTT_PORTA);
+  ws.begin();
+  ws.onEvent(eventoWebSocket);
 
   ultimoCalculo = millis();
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) conectarWiFi();
-  if (!mqtt.connected()) conectarMQTT();
-  mqtt.loop();
+  ws.loop();
 
   if (millis() - ultimoEnvio >= 1000) {
     ultimoEnvio = millis();
@@ -222,7 +229,7 @@ void loop() {
              "{\"vibracao\":%.3f,\"corrente\":%.2f,\"rpm\":%.0f,\"oleo_cm\":%.1f}",
              vibracao, corrente, rpm, oleoCm);
 
-    mqtt.publish(TOPICO, json);
+    ws.broadcastTXT(json);   // envia para todos os painéis conectados
     Serial.println(json);
   }
 }
