@@ -591,7 +591,7 @@
         <!-- Conexão com o ESP32 -->
         <article class="card card-ip">
           <div id="ipTitulo" class="card-titulo aviso-ip">📡 INFORME O IP</div>
-          <label class="campo" for="ipEsp">IP do ESP32 (aparece no Monitor Serial)</label>
+          <label class="campo" for="ipEsp">IP do ESP32 (aparece no display LCD do torno)</label>
           <div class="linha-ip">
             <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
             <button id="btnConectar" class="btn-principal" type="button">CONECTAR</button>
@@ -734,8 +734,9 @@
      CONFIGURAÇÃO — ajuste aqui
      ===================================================================== */
   const CONFIG = {
-    WS_PORTA: 81,                                  // mesma porta do WS_PORTA no firmware (ws://<IP>:81)
-    WS_RECONEXAO_MS: 3000,                         // tempo entre tentativas de reconexão
+    INTERVALO_MS: 1000,                            // de quanto em quanto tempo o painel pede os dados ao ESP32
+    TIMEOUT_PEDIDO_MS: 3000,                       // pedido sem resposta por mais que isso = falhou
+    FALHAS_PARA_DESCONECTAR: 3,                    // pedidos seguidos sem resposta até mostrar DESCONECTADO
     PONTOS_GRAFICO: 30,                            // quantas leituras aparecem nos gráficos
     TIMEOUT_SEM_SINAL_MS: 10000,                   // sem dados por mais que isso = SEM SINAL
 
@@ -773,9 +774,9 @@
   const COR = { normal: '#3ddc6b', alerta: '#f4c430', critico: '#ff3b3b', vermelho: '#e8141c' };
 
   const estado = {
-    client: null,
-    wsUrl: '',
-    reconexao: null,
+    base: '',            // endereço do ESP32, ex.: http://192.168.0.50
+    busca: null,         // timer do próximo pedido de dados
+    falhas: 0,           // pedidos seguidos que falharam
     conectado: false,
     ultimaLeitura: 0,
     leitura: { vibracao: null, corrente: null, rpm: null, oleo: null },
@@ -837,11 +838,10 @@
   }
 
   /* =====================================================================
-     RECEBIMENTO DOS DADOS (WebSocket)
-     Formato do firmware: {"corrente_a":7.4,"vibracao_g":0.35,"rpm":1400,"sentido":1,
-                           "distancia_cm":12.3,"oleo_pct":64}
+     RECEBIMENTO DOS DADOS (http://<IP do ESP32>/dados)
+     Formato do firmware: {"vibracao":0.35,"corrente":7.4,"rpm":1400,"oleo_cm":12.3,"rssi":-58}
      Valor -1 = sensor sem leitura (é ignorado)
-     (também aceita o formato antigo: vibracao, corrente, oleo_cm)
+     (também aceita: vibracao_g, corrente_a, sentido, distancia_cm, oleo_pct)
      ===================================================================== */
   function processarDados(d) {
     const v = numero(d.vibracao_g ?? d.vibracao);
@@ -1118,10 +1118,10 @@
 
   function atualizarStatus() {
     let st;
-    if (!estado.wsUrl) {
+    if (!estado.base) {
       st = 'semip';
     } else if (!estado.conectado) {
-      st = estado.ultimaLeitura ? 'off' : 'conectando';
+      st = estado.falhas >= CONFIG.FALHAS_PARA_DESCONECTAR ? 'off' : 'conectando';
     } else if (!estado.ultimaLeitura || Date.now() - estado.ultimaLeitura > CONFIG.TIMEOUT_SEM_SINAL_MS) {
       st = 'semsinal';
     } else {
@@ -1191,35 +1191,57 @@
   }
 
   /* =====================================================================
-     CONEXÃO WEBSOCKET (direto com o ESP32 pelo IP)
+     CONEXÃO COM O ESP32 (HTTP comum, direto pelo IP)
+     O painel pede http://<IP>/dados a cada segundo. Funciona com o painel
+     aberto como arquivo no computador ou aberto pelo próprio IP do ESP32.
      ===================================================================== */
-  function conectarWS() {
-    clearTimeout(estado.reconexao);
-    const ws = new WebSocket(estado.wsUrl);
-    estado.client = ws;
+  function buscarDados() {
+    const base = estado.base;
+    if (!base) return;
 
-    ws.onopen = () => {
-      if (estado.client !== ws) return ws.close();
-      estado.conectado = true;
-      atualizarStatus();
-    };
+    const controle = new AbortController();
+    const limite = setTimeout(() => controle.abort(), CONFIG.TIMEOUT_PEDIDO_MS);
 
-    ws.onclose = () => {
-      if (estado.client !== ws) return;   // conexão antiga (IP trocado ou saída)
-      estado.conectado = false;
-      atualizarStatus();
-      estado.reconexao = setTimeout(conectarWS, CONFIG.WS_RECONEXAO_MS);
-    };
+    fetch(base + '/dados', { cache: 'no-store', signal: controle.signal })
+      .then((resp) => {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then((dados) => {
+        if (estado.base !== base) return;      // o IP foi trocado nesse meio-tempo
+        estado.conectado = true;
+        estado.falhas = 0;
+        $('msgIp').textContent = '';
+        processarDados(dados);
+      })
+      .catch((erro) => {
+        if (estado.base !== base) return;
+        estado.falhas++;
+        console.warn('ESP32: sem resposta de', base + '/dados', erro);
+        if (estado.falhas >= CONFIG.FALHAS_PARA_DESCONECTAR) {
+          estado.conectado = false;
+          $('msgIp').textContent =
+            `Sem resposta do ESP32 em ${base}. Confira o IP no display LCD e se este aparelho ` +
+            'está na mesma rede Wi-Fi do torno. O painel continua tentando sozinho.';
+        }
+        atualizarStatus();
+      })
+      .finally(() => {
+        clearTimeout(limite);
+        if (estado.base === base) estado.busca = setTimeout(buscarDados, CONFIG.INTERVALO_MS);
+      });
+  }
 
-    ws.onerror = () => console.error('WebSocket: falha ao conectar em', estado.wsUrl);
+  // Aceita "192.168.0.50", "http://192.168.0.50/", "192.168.0.50:8080" etc.
+  function limparIp(texto) {
+    return texto.trim().replace(/^[a-z]+:\/\//i, '').replace(/\/.*$/, '');
+  }
 
-    ws.onmessage = (ev) => {
-      try {
-        processarDados(JSON.parse(ev.data));
-      } catch (e) {
-        console.warn('Mensagem ignorada (JSON inválido):', e);
-      }
-    };
+  // Se o painel foi aberto pelo próprio ESP32 (http://<IP>/), o IP já é o endereço da página
+  function ipDaPagina() {
+    const h = location.hostname;
+    if (location.protocol !== 'http:' || !h || h === 'localhost' || h.startsWith('127.')) return '';
+    return location.host;
   }
 
   /* =====================================================================
@@ -1255,33 +1277,56 @@
 
   // Passo 2: IP do ESP32 (card "Conexão com o ESP32" no painel)
   function conectarIp() {
-    const ip = $('ipEsp').value.trim().replace(/^wss?:\/\//, '').replace(/\/.*$/, '');
+    const ip = limparIp($('ipEsp').value);
     if (!ip) {
-      $('msgIp').textContent = 'Informe o IP do ESP32.';
-      return;
-    }
-    if (location.protocol === 'https:') {
-      $('msgIp').textContent = 'Abra o painel por http:// ou pelo arquivo local: páginas https não podem usar ws:// (sem criptografia).';
+      $('msgIp').textContent = 'Informe o IP do ESP32 (aparece no display LCD do torno).';
       return;
     }
     try { localStorage.setItem('lathevision-ip', ip); } catch (e) { /* ignora */ }
 
-    // Se já havia uma conexão (troca de IP), fecha sem reconectar nela
-    clearTimeout(estado.reconexao);
-    const antigo = estado.client;
-    estado.client = null;
-    if (antigo) antigo.close();
-    estado.conectado = false;
+    // Página https (ex.: GitHub Pages): o navegador bloqueia pedidos para http://.
+    // Em vez de mostrar erro, abre o painel que o próprio ESP32 entrega, já logado e conectado.
+    if (location.protocol === 'https:') {
+      const sessao = new URLSearchParams({
+        op: $('operador').value.trim(),
+        torno: $('torno').value.trim(),
+        tensao: $('tensao').value,
+        ip,
+      });
+      $('msgIp').textContent = 'Abrindo o painel direto no ESP32...';
+      location.href = `http://${ip}/#${sessao}`;
+      return;
+    }
 
-    estado.wsUrl = ip.includes(':') ? `ws://${ip}` : `ws://${ip}:${CONFIG.WS_PORTA}`;
-    $('infoTopico').textContent = estado.wsUrl;
+    // Se já havia uma conexão (troca de IP), para de buscar no IP antigo
+    clearTimeout(estado.busca);
+    estado.conectado = false;
+    estado.falhas = 0;
+    estado.base = 'http://' + ip;
+
+    $('infoTopico').textContent = estado.base;
     $('msgIp').textContent = '';
     $('btnConectar').textContent = 'RECONECTAR';
     $('ipTitulo').textContent = '📡 CONEXÃO COM O ESP32';
     $('ipTitulo').classList.remove('aviso-ip');
 
-    conectarWS();
+    buscarDados();
     atualizarStatus();
+  }
+
+  // Quando o painel https redireciona para o ESP32, a sessão vem no endereço (#op=...&ip=...)
+  function retomarSessaoDoEndereco() {
+    if (!location.hash.includes('ip=')) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    history.replaceState(null, '', location.pathname);   // limpa o endereço
+    if (!p.get('op') || !p.get('torno')) return;
+
+    $('operador').value = p.get('op');
+    $('torno').value = p.get('torno');
+    if (p.get('tensao')) $('tensao').value = p.get('tensao');
+    iniciar();
+    $('ipEsp').value = p.get('ip') || ipDaPagina();
+    conectarIp();
   }
 
   function mostrarView(view, botao) {
@@ -1297,14 +1342,14 @@
   }
 
   function sair() {
-    const ws = estado.client;
-    estado.client = null;          // evita a reconexão automática
-    if (ws) ws.close();
+    clearTimeout(estado.busca);
+    estado.base = '';              // para de buscar dados
     location.reload();
   }
 
   carregarOpcoes();
-  try { $('ipEsp').value = localStorage.getItem('lathevision-ip') || ''; } catch (e) { /* ignora */ }
+  // IP sugerido: o da própria página (painel aberto pelo ESP32) ou o último usado
+  try { $('ipEsp').value = ipDaPagina() || localStorage.getItem('lathevision-ip') || ''; } catch (e) { /* ignora */ }
   ['cfgAuto', 'cfgSom', 'cfgPreditiva'].forEach((id) => $(id).addEventListener('change', salvarOpcoes));
 
   $('btnIniciar').addEventListener('click', () => {
@@ -1324,6 +1369,8 @@
       mostrarView(btn.dataset.view, btn);
     });
   });
+
+  retomarSessaoDoEndereco();
   </script>
 </body>
 </html>
