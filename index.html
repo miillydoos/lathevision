@@ -344,6 +344,7 @@
     .card-ip .linha-ip input { flex: 1; min-width: 0; }
     .card-ip .btn-principal { width: auto; margin-top: 0; padding: 14px 22px; }
     .card-ip .msg-erro { margin-top: 8px; }
+    .card-ip .aviso-ip { font-size: 1.4rem; color: #fff; }
     @media (max-width: 480px) {
       .card-ip .linha-ip { flex-direction: column; }
       .card-ip .btn-principal { width: 100%; }
@@ -589,7 +590,7 @@
 
         <!-- Conexão com o ESP32 -->
         <article class="card card-ip">
-          <div class="card-titulo">📡 CONEXÃO COM O ESP32</div>
+          <div id="ipTitulo" class="card-titulo aviso-ip">📡 INFORME O IP</div>
           <label class="campo" for="ipEsp">IP do ESP32 (aparece no Monitor Serial)</label>
           <div class="linha-ip">
             <input id="ipEsp" type="text" placeholder="Ex.: 192.168.0.50" autocomplete="off" inputmode="decimal" />
@@ -1276,6 +1277,8 @@
     $('infoTopico').textContent = estado.wsUrl;
     $('msgIp').textContent = '';
     $('btnConectar').textContent = 'RECONECTAR';
+    $('ipTitulo').textContent = '📡 CONEXÃO COM O ESP32';
+    $('ipTitulo').classList.remove('aviso-ip');
 
     conectarWS();
     atualizarStatus();
